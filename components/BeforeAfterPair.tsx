@@ -1,13 +1,9 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { colors, spacing } from '@/constants/theme';
+import { resolvePhotoDisplayUri } from '@/lib/storage';
 import type { JobPhoto } from '@/lib/types';
-
-function uriFor(photo: JobPhoto | null): string | null {
-  if (!photo) return null;
-  return photo.local_uri || photo.storage_path || null;
-}
 
 function Slot({
   label,
@@ -18,7 +14,24 @@ function Slot({
   photo: JobPhoto | null;
   accent: string;
 }) {
-  const uri = uriFor(photo);
+  const [uri, setUri] = useState<string | null>(photo?.local_uri ?? null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!photo) {
+      setUri(null);
+      return;
+    }
+    // Prefer local immediately for snappy UI, then upgrade to signed storage URL.
+    setUri(photo.local_uri);
+    resolvePhotoDisplayUri(photo).then((resolved) => {
+      if (!cancelled && resolved) setUri(resolved);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [photo]);
+
   return (
     <View style={styles.slot}>
       <Text style={[styles.label, { color: accent }]}>{label}</Text>
@@ -29,7 +42,11 @@ function Slot({
           <Text style={styles.placeholderText}>No {label.toLowerCase()}</Text>
         </View>
       )}
-      {photo?.caption ? <Text style={styles.caption} numberOfLines={2}>{photo.caption}</Text> : null}
+      {photo?.caption ? (
+        <Text style={styles.caption} numberOfLines={2}>
+          {photo.caption}
+        </Text>
+      ) : null}
     </View>
   );
 }

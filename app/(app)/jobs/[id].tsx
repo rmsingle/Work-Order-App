@@ -19,6 +19,7 @@ import { StatusBadge } from '@/components/StatusBadge';
 import { useAuth } from '@/contexts/AuthContext';
 import { colors, spacing } from '@/constants/theme';
 import { captureFromCamera, newPairId, pickFromLibrary } from '@/lib/photos';
+import { resolvePhotoDisplayUri, uploadJobPhoto } from '@/lib/storage';
 import { getSupabase } from '@/lib/supabase';
 import { buildTimeline } from '@/lib/timeline';
 import type { Job, JobNote, JobPhoto, PhotoKind } from '@/lib/types';
@@ -31,8 +32,9 @@ function formatWhen(iso: string) {
   }
 }
 
-function photoUri(p: JobPhoto) {
-  return p.local_uri || p.storage_path || null;
+/** Sync fallback: local_uri only. Prefer uriById (signed storage URL) in UI. */
+function photoUriFallback(p: JobPhoto) {
+  return p.local_uri || null;
 }
 
 export default function JobDetailScreen() {
@@ -50,6 +52,8 @@ export default function JobDetailScreen() {
   const [capturing, setCapturing] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [pendingPairId, setPendingPairId] = useState<string | null>(null);
+  /** photo id → display URI (signed storage URL preferred, else local_uri) */
+  const [uriById, setUriById] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -96,6 +100,27 @@ export default function JobDetailScreen() {
     load();
   }, [load]);
 
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const entries = await Promise.all(
+        photos.map(async (p) => {
+          const uri = await resolvePhotoDisplayUri(p);
+          return uri ? ([p.id, uri] as const) : null;
+        })
+      );
+      if (cancelled) return;
+      const next: Record<string, string> = {};
+      for (const e of entries) {
+        if (e) next[e[0]] = e[1];
+      }
+      setUriById(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [photos]);
+
   useLayoutEffect(() => {
     navigation.setOptions({ title: job?.title ?? 'Job' });
   }, [navigation, job?.title]);
@@ -123,11 +148,18 @@ export default function JobDetailScreen() {
     caption: string | null;
   }) {
     if (!id || !user) return;
-    // Storage stub: persist local_uri now; storage_path filled when bucket upload is wired.
+    // Upload to private Storage; keep local_uri as offline/fallback display.
+    let storagePath: string | null = null;
+    try {
+      storagePath = await uploadJobPhoto({ jobId: id, localUri: opts.localUri });
+    } catch (uploadErr) {
+      // Still persist local_uri so the capture is not lost if Storage is misconfigured.
+      console.warn('Storage upload failed; saving local_uri only', uploadErr);
+    }
     const { error: insErr } = await getSupabase().from('job_photos').insert({
       job_id: id,
       local_uri: opts.localUri,
-      storage_path: null,
+      storage_path: storagePath,
       lat: opts.lat,
       lng: opts.lng,
       caption: opts.caption,
@@ -233,7 +265,7 @@ export default function JobDetailScreen() {
         ) : (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.strip}>
             {photos.map((p) => {
-              const uri = photoUri(p);
+              const uri = uriById[p.id] ?? photoUriFallback(p);
               return (
                 <View key={p.id} style={styles.thumbWrap}>
                   {uri ? (
@@ -268,7 +300,7 @@ export default function JobDetailScreen() {
           timeline.map((item) => {
             if (item.type === 'photo') {
               const p = item.photo;
-              const uri = photoUri(p);
+              const uri = uriById[p.id] ?? photoUriFallback(p);
               return (
                 <View key={`photo-${p.id}`} style={styles.timelineCard}>
                   <Text style={styles.timelineLabel}>
@@ -340,7 +372,7 @@ export default function JobDetailScreen() {
         <Pressable style={styles.sheetBackdrop} onPress={() => setSheetOpen(false)}>
           <View style={styles.sheet} onStartShouldSetResponder={() => true}>
             <Text style={styles.sheetTitle}>Fast Capture</Text>
-            <Text style={styles.sheetSub}>GPS tagged when permission allows. Storage upload stubbed (local URI).</Text>
+            <Text style={styles.sheetSub}>GPS tagged when permission allows. Uploads to private Supabase Storage (local URI kept as fallback).</Text>
 
             <Pressable style={styles.sheetBtn} onPress={() => runCapture('general', null, 'camera')}>
               <Text style={styles.sheetBtnText}>Camera · general</Text>

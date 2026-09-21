@@ -25,15 +25,30 @@ export function ConfigureSupabase() {
           </Text>
         </View>
 
-        <Text style={styles.section}>Where to find them</Text>
+        <Text style={styles.section}>Rob Supabase checklist</Text>
+        <Text style={styles.body}>
+          1. Create a project at supabase.com{'\n'}
+          2. Authentication → Providers: enable Email; optionally enable Phone{'\n'}
+          3. SQL Editor → run <Text style={styles.mono}>001_init.sql</Text>, then{' '}
+          <Text style={styles.mono}>002_storage_job_photos.sql</Text>
+          {'\n'}
+          4. Copy Project URL + anon key into <Text style={styles.mono}>.env</Text> (never commit
+          secrets){'\n'}
+          5. Restart Metro so env vars reload
+        </Text>
+
+        <Text style={styles.section}>Where to find keys</Text>
         <Text style={styles.body}>
           Supabase Dashboard → Project Settings → API → Project URL and anon/public key.
         </Text>
 
-        <Text style={styles.section}>Database</Text>
+        <Text style={styles.section}>Migrations</Text>
         <Text style={styles.body}>
-          Paste <Text style={styles.mono}>supabase/migrations/001_init.sql</Text> into the Supabase
-          SQL Editor and run it (profiles, jobs, job_notes, job_photos, RLS, seed).
+          <Text style={styles.mono}>supabase/migrations/001_init.sql</Text> — profiles, jobs,
+          job_notes, job_photos, RLS, seed.{'\n'}
+          <Text style={styles.mono}>supabase/migrations/002_storage_job_photos.sql</Text> — private{' '}
+          <Text style={styles.mono}>job-photos</Text> Storage bucket + authenticated object
+          policies.
         </Text>
 
         <Text style={styles.section}>Then</Text>
