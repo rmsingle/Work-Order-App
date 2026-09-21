@@ -1,5 +1,10 @@
 -- PSG Job Tracker — private Storage bucket for job photos
 -- Run after 001_init.sql (SQL Editor or supabase db push).
+--
+-- NOTE: Do NOT run "ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY".
+-- storage.objects is owned by supabase_storage_admin; the SQL Editor role is
+-- not the owner (Error 42501). RLS is already enabled on that table in
+-- hosted Supabase. Creating policies below is enough.
 
 -- ---------------------------------------------------------------------------
 -- Bucket: private job-photos
@@ -12,8 +17,6 @@ comment on column public.job_photos.storage_path is
   'Object key in the private job-photos bucket. Set on capture so the photo syncs across devices.';
 comment on column public.job_photos.local_uri is
   'Optional same-device URI. New captures leave this null and set storage_path instead.';
-
-alter table storage.objects enable row level security;
 
 -- ---------------------------------------------------------------------------
 -- storage.objects policies — authenticated CRUD on job-photos only
