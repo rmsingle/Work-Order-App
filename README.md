@@ -54,6 +54,7 @@ lib/
 supabase/migrations/
   001_init.sql
   002_storage_job_photos.sql
+supabase/002_storage_policies_for_dashboard.txt
 .env.example
 README.md
 ```
@@ -99,9 +100,15 @@ Do these clicks once. The repo cannot create the project, turn on providers, or 
    - The login screen expects E.164 numbers (`+13365551234`).
 6. **Run the SQL, in order.** **SQL Editor** → New query → paste `supabase/migrations/001_init.sql` → **Run**. Then a new query → paste `supabase/migrations/002_storage_job_photos.sql` → **Run**.
    - `001` creates profiles, jobs, notes, photos, RLS, the signup trigger, and three sample Winston-Salem jobs.
-   - `002` creates the **private** `job-photos` bucket and the storage policies the app needs to upload and sign URLs. Re-run it if you already applied an older `001` that left the bucket commented out.
-7. **Confirm the bucket.** **Storage → Files** (or **Storage → Buckets**) should list `job-photos` and it should be **private**. Do not flip it to public. If `002` failed, fix the SQL error and run it again. Do not create a second public bucket by hand.
-8. **Restart the app** so Expo reloads `.env`:
+   - `002` creates the **private** `job-photos` bucket only. It does not create storage policies. The SQL Editor cannot `ALTER` or `CREATE POLICY` on `storage.objects` (error 42501; that table is owned by `supabase_storage_admin`). Re-run `002` if you already applied an older `001` that left the bucket commented out.
+7. **Add the four storage policies.** After `002`, open **Dashboard → Storage → Policies** for the `job-photos` bucket and add these four policies. Role is **authenticated**. Each expression is `bucket_id = 'job-photos'`:
+   - `job_photos_storage_select` — SELECT, USING
+   - `job_photos_storage_insert` — INSERT, WITH CHECK
+   - `job_photos_storage_update` — UPDATE, USING and WITH CHECK
+   - `job_photos_storage_delete` — DELETE, USING
+   Exact expressions are in `supabase/002_storage_policies_for_dashboard.txt`.
+8. **Confirm the bucket.** **Storage → Files** (or **Storage → Buckets**) should list `job-photos` and it should be **private**. Do not flip it to public. If `002` failed, fix the SQL error and run it again. Do not create a second public bucket by hand. Uploads also need the four `job_photos_storage_*` policies from the previous step.
+9. **Restart the app** so Expo reloads `.env`:
 
    ```bash
    npx expo start
@@ -140,7 +147,7 @@ npm run check:schema
 - **jobs** — title, property_address, status, created_by, timestamps. The app selects jobs, inserts a new job (`title`, `property_address`, `status`, `created_by`), and updates `updated_at`
 - **job_notes** — job_id, author_id, body, created_at. The app selects and inserts notes. It does not edit or delete them
 - **job_photos** — job_id, storage_path (bucket object key), local_uri (legacy only), lat, lng, caption, kind (`before`|`after`|`general`), pair_id, created_by, created_at. Capture inserts `storage_path` and leaves `local_uri` null
-- **storage** — private bucket `job-photos` (`002_storage_job_photos.sql`). Authenticated select/insert/update/delete on that bucket only. Display uses 1-hour signed URLs
+- **storage** — private bucket `job-photos` (`002_storage_job_photos.sql`). After `002`, add the four `job_photos_storage_*` policies in **Dashboard → Storage → Policies** (authenticated select/insert/update/delete on that bucket only). Display uses 1-hour signed URLs
 - Trigger: new `auth.users` → `profiles` row
 - RLS: authenticated select/insert/update on jobs, notes, photos (shared foundation; roles tighten later)
 - Seed: 3 SAMPLE Winston-Salem area jobs (Gilmer / Raintree / Queen)

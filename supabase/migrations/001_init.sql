@@ -50,7 +50,8 @@ create index if not exists job_notes_job_id_idx on public.job_notes (job_id, cre
 -- storage_path = object key in the private job-photos bucket (cross-device)
 -- local_uri    = optional same-device URI for rows captured before storage upload
 -- New captures set storage_path and leave local_uri null.
--- Bucket + storage policies: supabase/migrations/002_storage_job_photos.sql
+-- Bucket: supabase/migrations/002_storage_job_photos.sql
+-- Policies: Dashboard → Storage → Policies (supabase/002_storage_policies_for_dashboard.txt)
 -- ---------------------------------------------------------------------------
 create table if not exists public.job_photos (
   id uuid primary key default gen_random_uuid(),
@@ -197,5 +198,6 @@ select * from (values
 ) as v(title, property_address, status)
 where not exists (select 1 from public.jobs limit 1);
 
--- Storage bucket and policies are in 002_storage_job_photos.sql.
--- Run that file after this one. The app uploads to private bucket "job-photos".
+-- Storage bucket insert is in 002_storage_job_photos.sql.
+-- After that file, add the four job_photos_storage_* policies in Dashboard → Storage → Policies.
+-- Run 002 after this file. The app uploads to private bucket "job-photos".
