@@ -6,11 +6,33 @@ import { Platform } from 'react-native';
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
 
-export const isSupabaseConfigured =
-  Boolean(supabaseUrl) &&
-  Boolean(supabaseAnonKey) &&
-  !supabaseUrl.includes('YOUR_PROJECT') &&
-  !supabaseAnonKey.includes('YOUR_SUPABASE');
+/** Reject secret / service_role keys so they are never used from the app. */
+function isPrivilegedKey(key: string): boolean {
+  if (key.startsWith('sb_secret_')) return true;
+  const payload = key.split('.')[1];
+  if (!payload) return false;
+  try {
+    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+    const json = JSON.parse(globalThis.atob(padded)) as { role?: string };
+    return json.role === 'service_role';
+  } catch {
+    return false;
+  }
+}
+
+export type SupabaseConfigError = 'missing' | 'placeholder' | 'privileged' | null;
+
+export function getSupabaseConfigError(): SupabaseConfigError {
+  if (!supabaseUrl || !supabaseAnonKey) return 'missing';
+  if (supabaseUrl.includes('YOUR_PROJECT') || supabaseAnonKey.includes('YOUR_SUPABASE')) {
+    return 'placeholder';
+  }
+  if (isPrivilegedKey(supabaseAnonKey)) return 'privileged';
+  return null;
+}
+
+export const isSupabaseConfigured = getSupabaseConfigError() === null;
 
 /** Web uses localStorage; native uses AsyncStorage for session persistence. */
 const storage =

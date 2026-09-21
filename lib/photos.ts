@@ -1,15 +1,33 @@
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
+import { mimeFromUri } from './photo-storage';
 import type { PhotoKind } from './types';
 
 export type CapturedPhoto = {
   localUri: string;
+  mimeType: string | null;
   lat: number | null;
   lng: number | null;
   kind: PhotoKind;
   caption: string | null;
   pairId: string | null;
 };
+
+function capturedFromAsset(
+  asset: ImagePicker.ImagePickerAsset,
+  opts: { kind?: PhotoKind; pairId?: string | null; caption?: string | null } | undefined,
+  gps: { lat: number | null; lng: number | null }
+): CapturedPhoto {
+  return {
+    localUri: asset.uri,
+    mimeType: asset.mimeType ?? mimeFromUri(asset.uri),
+    lat: gps.lat,
+    lng: gps.lng,
+    kind: opts?.kind ?? 'general',
+    caption: opts?.caption ?? null,
+    pairId: opts?.pairId ?? null,
+  };
+}
 
 async function readGps(): Promise<{ lat: number | null; lng: number | null }> {
   try {
@@ -46,14 +64,7 @@ export async function captureFromCamera(opts?: {
   if (result.canceled || !result.assets?.[0]) return null;
 
   const gps = await readGps();
-  return {
-    localUri: result.assets[0].uri,
-    lat: gps.lat,
-    lng: gps.lng,
-    kind: opts?.kind ?? 'general',
-    caption: opts?.caption ?? null,
-    pairId: opts?.pairId ?? null,
-  };
+  return capturedFromAsset(result.assets[0], opts, gps);
 }
 
 /** Library picker for attaching existing site photos. */
@@ -76,14 +87,7 @@ export async function pickFromLibrary(opts?: {
   if (result.canceled || !result.assets?.[0]) return null;
 
   const gps = await readGps();
-  return {
-    localUri: result.assets[0].uri,
-    lat: gps.lat,
-    lng: gps.lng,
-    kind: opts?.kind ?? 'general',
-    caption: opts?.caption ?? null,
-    pairId: opts?.pairId ?? null,
-  };
+  return capturedFromAsset(result.assets[0], opts, gps);
 }
 
 /** Group before/after photos that share a pair_id. */

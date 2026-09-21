@@ -1,37 +1,27 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { colors, spacing } from '@/constants/theme';
-import { resolvePhotoDisplayUri } from '@/lib/storage';
+import { photoDisplayUri } from '@/lib/photo-storage';
 import type { JobPhoto } from '@/lib/types';
+
+function uriFor(photo: JobPhoto | null, signedByPath: Readonly<Record<string, string>>): string | null {
+  if (!photo) return null;
+  return photoDisplayUri(photo, signedByPath);
+}
 
 function Slot({
   label,
   photo,
   accent,
+  signedByPath,
 }: {
   label: string;
   photo: JobPhoto | null;
   accent: string;
+  signedByPath: Readonly<Record<string, string>>;
 }) {
-  const [uri, setUri] = useState<string | null>(photo?.local_uri ?? null);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!photo) {
-      setUri(null);
-      return;
-    }
-    // Prefer local immediately for snappy UI, then upgrade to signed storage URL.
-    setUri(photo.local_uri);
-    resolvePhotoDisplayUri(photo).then((resolved) => {
-      if (!cancelled && resolved) setUri(resolved);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [photo]);
-
+  const uri = uriFor(photo, signedByPath);
   return (
     <View style={styles.slot}>
       <Text style={[styles.label, { color: accent }]}>{label}</Text>
@@ -42,11 +32,7 @@ function Slot({
           <Text style={styles.placeholderText}>No {label.toLowerCase()}</Text>
         </View>
       )}
-      {photo?.caption ? (
-        <Text style={styles.caption} numberOfLines={2}>
-          {photo.caption}
-        </Text>
-      ) : null}
+      {photo?.caption ? <Text style={styles.caption} numberOfLines={2}>{photo.caption}</Text> : null}
     </View>
   );
 }
@@ -54,16 +40,18 @@ function Slot({
 export function BeforeAfterPairCard({
   before,
   after,
+  signedByPath,
 }: {
   before: JobPhoto | null;
   after: JobPhoto | null;
+  signedByPath: Readonly<Record<string, string>>;
 }) {
   return (
     <View style={styles.card}>
       <Text style={styles.title}>Before / After</Text>
       <View style={styles.row}>
-        <Slot label="Before" photo={before} accent={colors.before} />
-        <Slot label="After" photo={after} accent={colors.after} />
+        <Slot label="Before" photo={before} accent={colors.before} signedByPath={signedByPath} />
+        <Slot label="After" photo={after} accent={colors.after} signedByPath={signedByPath} />
       </View>
     </View>
   );

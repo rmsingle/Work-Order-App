@@ -2,9 +2,10 @@ import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing } from '@/constants/theme';
-import { envHints } from '@/lib/supabase';
+import { envHints, getSupabaseConfigError } from '@/lib/supabase';
 
 export function ConfigureSupabase() {
+  const configError = getSupabaseConfigError();
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.content}>
@@ -25,30 +26,25 @@ export function ConfigureSupabase() {
           </Text>
         </View>
 
-        <Text style={styles.section}>Rob Supabase checklist</Text>
+        {configError === 'privileged' ? (
+          <Text style={styles.warn}>
+            That value is a secret or service_role key. Replace it with the publishable key
+            (sb_publishable_…) or the legacy anon key. Never put a secret key in this app.
+          </Text>
+        ) : null}
+
+        <Text style={styles.section}>Where to find them</Text>
         <Text style={styles.body}>
-          1. Create a project at supabase.com{'\n'}
-          2. Authentication → Providers: enable Email; optionally enable Phone{'\n'}
-          3. SQL Editor → run <Text style={styles.mono}>001_init.sql</Text>, then{' '}
-          <Text style={styles.mono}>002_storage_job_photos.sql</Text>
-          {'\n'}
-          4. Copy Project URL + anon key into <Text style={styles.mono}>.env</Text> (never commit
-          secrets){'\n'}
-          5. Restart Metro so env vars reload
+          Supabase Dashboard → Connect, or Settings → API Keys. Copy the project URL and the
+          publishable key (or legacy anon key) into .env. Do not copy the secret or service_role key.
         </Text>
 
-        <Text style={styles.section}>Where to find keys</Text>
+        <Text style={styles.section}>Database and photos</Text>
         <Text style={styles.body}>
-          Supabase Dashboard → Project Settings → API → Project URL and anon/public key.
-        </Text>
-
-        <Text style={styles.section}>Migrations</Text>
-        <Text style={styles.body}>
-          <Text style={styles.mono}>supabase/migrations/001_init.sql</Text> — profiles, jobs,
-          job_notes, job_photos, RLS, seed.{'\n'}
-          <Text style={styles.mono}>supabase/migrations/002_storage_job_photos.sql</Text> — private{' '}
-          <Text style={styles.mono}>job-photos</Text> Storage bucket + authenticated object
-          policies.
+          SQL Editor: run <Text style={styles.mono}>supabase/migrations/001_init.sql</Text>, then{' '}
+          <Text style={styles.mono}>002_storage_job_photos.sql</Text>. The second file creates the
+          private job-photos bucket. Enable Email and Phone under Authentication → Providers. Phone
+          also needs an SMS provider on that screen.
         </Text>
 
         <Text style={styles.section}>Then</Text>
@@ -86,6 +82,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: colors.navy,
+  },
+  warn: {
+    marginTop: spacing.md,
+    fontSize: 15,
+    lineHeight: 22,
+    color: colors.danger,
+    fontWeight: '700',
   },
   body: { fontSize: 15, lineHeight: 22, color: colors.navyMid },
   mono: {

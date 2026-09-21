@@ -19,7 +19,8 @@ import { StatusBadge } from '@/components/StatusBadge';
 import { useAuth } from '@/contexts/AuthContext';
 import { colors, spacing } from '@/constants/theme';
 import { captureFromCamera, newPairId, pickFromLibrary } from '@/lib/photos';
-import { resolvePhotoDisplayUri, uploadJobPhoto } from '@/lib/storage';
+import { photoDisplayUri } from '@/lib/photo-storage';
+import { removeJobPhoto, signedUrlsForPaths, uploadJobPhoto } from '@/lib/storage';
 import { getSupabase } from '@/lib/supabase';
 import { buildTimeline } from '@/lib/timeline';
 import type { Job, JobNote, JobPhoto, PhotoKind } from '@/lib/types';
@@ -32,9 +33,8 @@ function formatWhen(iso: string) {
   }
 }
 
-/** Sync fallback: local_uri only. Prefer uriById (signed storage URL) in UI. */
-function photoUriFallback(p: JobPhoto) {
-  return p.local_uri || null;
+function photoUri(photo: JobPhoto, signedByPath: Readonly<Record<string, string>>) {
+  return photoDisplayUri(photo, signedByPath);
 }
 
 export default function JobDetailScreen() {
@@ -44,6 +44,7 @@ export default function JobDetailScreen() {
 
   const [job, setJob] = useState<Job | null>(null);
   const [photos, setPhotos] = useState<JobPhoto[]>([]);
+  const [signedByPath, setSignedByPath] = useState<Record<string, string>>({});
   const [notes, setNotes] = useState<JobNote[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -52,8 +53,6 @@ export default function JobDetailScreen() {
   const [capturing, setCapturing] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [pendingPairId, setPendingPairId] = useState<string | null>(null);
-  /** photo id → display URI (signed storage URL preferred, else local_uri) */
-  const [uriById, setUriById] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -86,8 +85,21 @@ export default function JobDetailScreen() {
       if (photoRes.error) throw photoRes.error;
       if (noteRes.error) throw noteRes.error;
 
+      const nextPhotos = (photoRes.data as unknown as JobPhoto[]) ?? [];
+      const storagePaths = nextPhotos
+        .map((photo) => photo.storage_path)
+        .filter((path): path is string => Boolean(path));
+      const signed = await signedUrlsForPaths(storagePaths);
+      const unsigned = storagePaths.filter((path) => !signed[path]);
+      if (storagePaths.length > 0 && unsigned.length === storagePaths.length) {
+        throw new Error(
+          'Could not sign job photo URLs. Run supabase/migrations/002_storage_job_photos.sql and confirm the job-photos bucket is private.'
+        );
+      }
+
       setJob(jobRes.data as Job);
-      setPhotos((photoRes.data as unknown as JobPhoto[]) ?? []);
+      setPhotos(nextPhotos);
+      setSignedByPath(signed);
       setNotes((noteRes.data as unknown as JobNote[]) ?? []);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load job');
@@ -99,27 +111,6 @@ export default function JobDetailScreen() {
   React.useEffect(() => {
     load();
   }, [load]);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const entries = await Promise.all(
-        photos.map(async (p) => {
-          const uri = await resolvePhotoDisplayUri(p);
-          return uri ? ([p.id, uri] as const) : null;
-        })
-      );
-      if (cancelled) return;
-      const next: Record<string, string> = {};
-      for (const e of entries) {
-        if (e) next[e[0]] = e[1];
-      }
-      setUriById(next);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [photos]);
 
   useLayoutEffect(() => {
     navigation.setOptions({ title: job?.title ?? 'Job' });
@@ -141,6 +132,7 @@ export default function JobDetailScreen() {
 
   async function insertPhoto(opts: {
     localUri: string;
+    mimeType: string | null;
     lat: number | null;
     lng: number | null;
     kind: PhotoKind;
@@ -148,17 +140,14 @@ export default function JobDetailScreen() {
     caption: string | null;
   }) {
     if (!id || !user) return;
-    // Upload to private Storage; keep local_uri as offline/fallback display.
-    let storagePath: string | null = null;
-    try {
-      storagePath = await uploadJobPhoto({ jobId: id, localUri: opts.localUri });
-    } catch (uploadErr) {
-      // Still persist local_uri so the capture is not lost if Storage is misconfigured.
-      console.warn('Storage upload failed; saving local_uri only', uploadErr);
-    }
+    const storagePath = await uploadJobPhoto({
+      jobId: id,
+      localUri: opts.localUri,
+      mimeType: opts.mimeType,
+    });
     const { error: insErr } = await getSupabase().from('job_photos').insert({
       job_id: id,
-      local_uri: opts.localUri,
+      local_uri: null,
       storage_path: storagePath,
       lat: opts.lat,
       lng: opts.lng,
@@ -167,7 +156,10 @@ export default function JobDetailScreen() {
       pair_id: opts.pairId,
       created_by: user.id,
     });
-    if (insErr) throw insErr;
+    if (insErr) {
+      await removeJobPhoto(storagePath).catch(() => undefined);
+      throw insErr;
+    }
     await getSupabase().from('jobs').update({ updated_at: new Date().toISOString() }).eq('id', id);
     await load();
   }
@@ -183,6 +175,7 @@ export default function JobDetailScreen() {
       if (!captured) return;
       await insertPhoto({
         localUri: captured.localUri,
+        mimeType: captured.mimeType,
         lat: captured.lat,
         lng: captured.lng,
         kind: captured.kind,
@@ -265,7 +258,7 @@ export default function JobDetailScreen() {
         ) : (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.strip}>
             {photos.map((p) => {
-              const uri = uriById[p.id] ?? photoUriFallback(p);
+              const uri = photoUri(p, signedByPath);
               return (
                 <View key={p.id} style={styles.thumbWrap}>
                   {uri ? (
@@ -287,7 +280,12 @@ export default function JobDetailScreen() {
           <>
             <Text style={styles.section}>Before / After</Text>
             {pairs.map((pair) => (
-              <BeforeAfterPairCard key={pair.pair_id} before={pair.before} after={pair.after} />
+              <BeforeAfterPairCard
+                key={pair.pair_id}
+                before={pair.before}
+                after={pair.after}
+                signedByPath={signedByPath}
+              />
             ))}
           </>
         ) : null}
@@ -300,7 +298,7 @@ export default function JobDetailScreen() {
           timeline.map((item) => {
             if (item.type === 'photo') {
               const p = item.photo;
-              const uri = uriById[p.id] ?? photoUriFallback(p);
+              const uri = photoUri(p, signedByPath);
               return (
                 <View key={`photo-${p.id}`} style={styles.timelineCard}>
                   <Text style={styles.timelineLabel}>
@@ -372,7 +370,9 @@ export default function JobDetailScreen() {
         <Pressable style={styles.sheetBackdrop} onPress={() => setSheetOpen(false)}>
           <View style={styles.sheet} onStartShouldSetResponder={() => true}>
             <Text style={styles.sheetTitle}>Fast Capture</Text>
-            <Text style={styles.sheetSub}>GPS tagged when permission allows. Uploads to private Supabase Storage (local URI kept as fallback).</Text>
+            <Text style={styles.sheetSub}>
+              GPS tagged when permission allows. Photos upload to Supabase Storage and sync across devices.
+            </Text>
 
             <Pressable style={styles.sheetBtn} onPress={() => runCapture('general', null, 'camera')}>
               <Text style={styles.sheetBtnText}>Camera · general</Text>
