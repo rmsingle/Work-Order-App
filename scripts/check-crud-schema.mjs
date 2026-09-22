@@ -5,6 +5,7 @@ const root = path.resolve(import.meta.dirname, '..');
 const sql = fs.readFileSync(path.join(root, 'supabase/migrations/001_init.sql'), 'utf8');
 const storageSql = fs.readFileSync(path.join(root, 'supabase/migrations/002_storage_job_photos.sql'), 'utf8');
 const detail = fs.readFileSync(path.join(root, 'app/(app)/jobs/[id].tsx'), 'utf8');
+const finishButton = fs.readFileSync(path.join(root, 'components/JobFinishedButton.tsx'), 'utf8');
 const list = fs.readFileSync(path.join(root, 'app/(app)/jobs/index.tsx'), 'utf8');
 const auth = fs.readFileSync(path.join(root, 'contexts/AuthContext.tsx'), 'utf8');
 
@@ -81,10 +82,14 @@ if (!detail.includes('Add photo')) fail('job detail must show an Add photo contr
 if (/\bfab:\s*\{/.test(detail)) fail('capture must not stay a bottom-right FAB');
 if (!list.includes('Add photo')) fail('jobs list must show an Add photo control on each job');
 if (!list.includes('addPhoto=1')) fail('jobs list Add photo must open the job upload flow');
-if (!detail.includes('Job Finished')) fail('job detail must show Job Finished on photos');
-if (!detail.includes("status: 'done'")) fail('Job Finished must set jobs.status to done');
+if (!finishButton.includes('Mark complete')) fail('photo control must be labeled Mark complete');
+if (finishButton.includes('Job Finished') || detail.includes('Job Finished')) {
+  fail('user-facing Job Finished label must be renamed to Mark complete');
+}
+if (!detail.includes('Upload and mark complete')) fail('confirm button must say Upload and mark complete');
+if (!detail.includes("status: 'done'")) fail('Mark complete must set jobs.status to done');
 if (!detail.includes("kind: 'before'") && !detail.includes('completionTarget')) {
-  fail('Job Finished must link the completion photo to the original');
+  fail('Mark complete must link the completion photo to the original');
 }
 if (!detail.includes('storage_path: storagePath')) {
   fail('job_photos insert must persist the uploaded storage path');

@@ -256,7 +256,7 @@ export default function JobDetailScreen() {
         .eq('id', id);
       if (doneErr) {
         await load();
-        throw new Error(`Completion photo saved, but the job could not be marked done. ${doneErr.message}`);
+        throw new Error(`Completion photo saved, but the job could not be marked complete. ${doneErr.message}`);
       }
     } else {
       await getSupabase().from('jobs').update({ updated_at: new Date().toISOString() }).eq('id', id);
@@ -433,7 +433,7 @@ export default function JobDetailScreen() {
                   <JobFinishedButton
                     onPress={() => openJobFinished(p)}
                     disabled={capturing || sheetOpen}
-                    hint="Closes this job"
+                    hint="Marks this job complete"
                   />
                 </View>
               );
@@ -483,7 +483,7 @@ export default function JobDetailScreen() {
                   <JobFinishedButton
                     onPress={() => openJobFinished(p)}
                     disabled={capturing || sheetOpen}
-                    hint="Closes this job after a completion photo."
+                    hint="Marks this job complete after a completion photo."
                   />
                 </View>
               );
@@ -544,7 +544,7 @@ export default function JobDetailScreen() {
                     </Text>
                     <Text style={styles.sheetSub}>
                       {finishTarget
-                        ? 'Add or edit the note, then upload. This photo is the completion shot, and the job is marked Done.'
+                        ? 'Add or edit the note, then upload. This photo is the completion shot, and the job is marked complete.'
                         : 'Add or edit the note, then upload. It is saved on this photo as the caption.'}
                     </Text>
                     <Image
@@ -571,7 +571,7 @@ export default function JobDetailScreen() {
                         <ActivityIndicator color={colors.navy} />
                       ) : (
                         <Text style={styles.uploadBtnText}>
-                          {finishTarget ? 'Upload and finish job' : 'Upload photo'}
+                          {finishTarget ? 'Upload and mark complete' : 'Upload photo'}
                         </Text>
                       )}
                     </Pressable>
@@ -581,10 +581,10 @@ export default function JobDetailScreen() {
                   </>
                 ) : finishTarget ? (
                   <>
-                    <Text style={styles.sheetTitle}>Job Finished</Text>
+                    <Text style={styles.sheetTitle}>Mark complete</Text>
                     <Text style={styles.sheetSub}>
                       Take or upload a completion photo of the finished work. A note is optional.
-                      This job is marked Done when the photo uploads. Cancel leaves the job unchanged.
+                      This job is marked complete when the photo uploads. Cancel leaves the job unchanged.
                       {web ? ' On web, choose an image file if the camera is unavailable.' : ''}
                     </Text>
                     <Text style={styles.fieldLabel}>Note</Text>

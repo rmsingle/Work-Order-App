@@ -18,9 +18,9 @@ export function JobFinishedButton({
         onPress={onPress}
         disabled={disabled}
         accessibilityRole="button"
-        accessibilityLabel="Job Finished. Closes this job after a completion photo."
+        accessibilityLabel="Mark complete. Marks this job complete after a completion photo."
       >
-        <Text style={styles.text}>Job Finished</Text>
+        <Text style={styles.text}>Mark complete</Text>
       </Pressable>
       {hint ? <Text style={styles.hint}>{hint}</Text> : null}
     </View>

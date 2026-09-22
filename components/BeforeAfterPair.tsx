@@ -42,7 +42,7 @@ function Slot({
         <JobFinishedButton
           onPress={() => onJobFinished(photo)}
           disabled={finishDisabled}
-          hint="Closes this job"
+          hint="Marks this job complete"
         />
       ) : null}
     </View>
