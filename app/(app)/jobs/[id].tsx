@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -36,6 +37,10 @@ function formatWhen(iso: string) {
 
 function firstParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
+}
+
+function mapsSearchUrl(address: string) {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
 }
 
 type PendingUpload = {
@@ -410,6 +415,16 @@ export default function JobDetailScreen() {
   }
 
   const web = Platform.OS === 'web';
+  const address = job.property_address?.trim() ?? '';
+
+  async function openInMaps() {
+    if (!address) return;
+    try {
+      await Linking.openURL(mapsSearchUrl(address));
+    } catch (e) {
+      Alert.alert('Could not open Maps', e instanceof Error ? e.message : 'Google Maps did not open.');
+    }
+  }
 
   return (
     <KeyboardAvoidingView
@@ -422,7 +437,19 @@ export default function JobDetailScreen() {
             <Text style={styles.title}>{job.title}</Text>
             <StatusBadge status={job.status} />
           </View>
-          <Text style={styles.address}>{job.property_address || 'No address'}</Text>
+          <Text style={styles.address}>{address || 'No address'}</Text>
+          {address ? (
+            <Pressable
+              style={styles.mapsBtn}
+              onPress={openInMaps}
+              accessibilityRole="button"
+              accessibilityLabel="Open in Google Maps"
+            >
+              <Text style={styles.mapsBtnText}>Open in Google Maps</Text>
+            </Pressable>
+          ) : (
+            <Text style={styles.mapsHint}>Add an address to open this job in Google Maps.</Text>
+          )}
           <Text style={styles.meta}>Updated {formatWhen(job.updated_at)}</Text>
           <Pressable
             style={[styles.addPhotoBtn, (capturing || sheetOpen) && styles.disabled]}
@@ -688,6 +715,16 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.sm },
   title: { flex: 1, fontSize: 20, fontWeight: '800', color: colors.navy },
   address: { marginTop: spacing.sm, color: colors.navyMid },
+  mapsBtn: {
+    alignSelf: 'flex-start',
+    marginTop: spacing.sm,
+    backgroundColor: colors.navy,
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  mapsBtnText: { color: colors.gold, fontWeight: '800' },
+  mapsHint: { marginTop: spacing.sm, color: colors.muted, fontSize: 13 },
   meta: { marginTop: 4, fontSize: 12, color: colors.muted },
   headerBtn: { paddingHorizontal: 12, paddingVertical: 6 },
   headerBackText: { color: colors.white, fontWeight: '700', fontSize: 16 },

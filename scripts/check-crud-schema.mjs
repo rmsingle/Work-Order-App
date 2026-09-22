@@ -110,6 +110,11 @@ if (!detail.includes("headerTitleAlign: 'center'")) {
   fail('job detail title must be centered, not beside Back');
 }
 if (!detail.includes('‹ Back')) fail('job detail header must show a Back control');
+if (!detail.includes('Open in Google Maps')) fail('job detail must offer Google Maps for the address');
+if (!detail.includes('https://www.google.com/maps/search/?api=1&query=')) {
+  fail('maps must query Google Maps with the property address');
+}
+if (!detail.includes('Linking.openURL')) fail('maps must open with Linking.openURL');
 if (!detail.includes("dismissTo('/(app)/jobs')")) fail('Back must return to the jobs list');
 if (detail.includes('>Timeline<')) fail('job detail must not render a Timeline section');
 if (!detail.includes('BeforeAfterPairCard')) fail('each work item must render as a BeforeAfterPair row');
