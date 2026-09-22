@@ -171,9 +171,24 @@ export default function JobDetailScreen() {
     router.setParams({ addPhoto: '' });
   }, [job, addPhotoFlag, openAddPhoto, router]);
 
+  const goToJobs = useCallback(() => {
+    router.dismissTo('/(app)/jobs');
+  }, [router]);
+
   useLayoutEffect(() => {
     navigation.setOptions({
       title: job?.title ?? 'Job',
+      headerBackVisible: false,
+      headerLeft: () => (
+        <Pressable
+          onPress={goToJobs}
+          style={styles.headerBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Back to jobs"
+        >
+          <Text style={styles.headerBackText}>‹ Back</Text>
+        </Pressable>
+      ),
       headerRight: job
         ? () => (
             <Pressable
@@ -188,7 +203,7 @@ export default function JobDetailScreen() {
           )
         : undefined,
     });
-  }, [navigation, job, capturing, sheetOpen, openAddPhoto]);
+  }, [navigation, job, capturing, sheetOpen, openAddPhoto, goToJobs]);
 
   const pairs = useMemo(() => {
     const map = new Map<string, { pair_id: string; before: JobPhoto | null; after: JobPhoto | null }>();
@@ -669,6 +684,7 @@ const styles = StyleSheet.create({
   address: { marginTop: spacing.sm, color: colors.navyMid },
   meta: { marginTop: 4, fontSize: 12, color: colors.muted },
   headerBtn: { paddingHorizontal: 12, paddingVertical: 6 },
+  headerBackText: { color: colors.white, fontWeight: '700', fontSize: 16 },
   headerBtnText: { color: colors.gold, fontWeight: '800' },
   addPhotoBtn: {
     marginTop: spacing.md,
