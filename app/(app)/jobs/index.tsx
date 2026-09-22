@@ -26,6 +26,47 @@ function formatWhen(iso: string) {
   }
 }
 
+export function JobListCard({
+  title,
+  address,
+  updatedLabel,
+  status,
+  onOpen,
+  onAddPhoto,
+}: {
+  title: string;
+  address: string | null;
+  updatedLabel: string;
+  status: Job['status'];
+  onOpen: () => void;
+  onAddPhoto: () => void;
+}) {
+  return (
+    <View style={styles.card}>
+      <Pressable onPress={onOpen} accessibilityRole="button" accessibilityLabel={`Open ${title}`}>
+        <View style={styles.cardTop}>
+          <Text style={styles.cardTitle} numberOfLines={2}>
+            {title}
+          </Text>
+          <StatusBadge status={status} />
+        </View>
+        <Text style={styles.address} numberOfLines={2}>
+          {address || 'No address'}
+        </Text>
+        <Text style={styles.meta}>Updated {updatedLabel}</Text>
+      </Pressable>
+      <Pressable
+        style={styles.cardPhotoBtn}
+        onPress={onAddPhoto}
+        accessibilityRole="button"
+        accessibilityLabel={`Add photo to ${title}`}
+      >
+        <Text style={styles.cardPhotoBtnText}>Add photo</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 export default function JobsListScreen() {
   const router = useRouter();
   const navigation = useNavigation();
@@ -124,7 +165,7 @@ export default function JobsListScreen() {
         <Text style={styles.helloText}>
           {profile?.full_name ? `Hi, ${profile.full_name}` : 'PSG jobs'}
         </Text>
-        <Text style={styles.helloSub}>Open a job to add photos and notes.</Text>
+        <Text style={styles.helloSub}>Photos and notes on each property job</Text>
       </View>
 
       {error ? (
@@ -161,23 +202,14 @@ export default function JobsListScreen() {
           </View>
         }
         renderItem={({ item }) => (
-          <Pressable
-            style={styles.card}
-            onPress={() => router.push(`/(app)/jobs/${item.id}`)}
-            accessibilityRole="button"
-            accessibilityLabel={`Open ${item.title}`}
-          >
-            <View style={styles.cardTop}>
-              <Text style={styles.cardTitle} numberOfLines={2}>
-                {item.title}
-              </Text>
-              <StatusBadge status={item.status} />
-            </View>
-            <Text style={styles.address} numberOfLines={2}>
-              {item.property_address || 'No address'}
-            </Text>
-            <Text style={styles.meta}>Updated {formatWhen(item.updated_at)}</Text>
-          </Pressable>
+          <JobListCard
+            title={item.title}
+            address={item.property_address}
+            updatedLabel={formatWhen(item.updated_at)}
+            status={item.status}
+            onOpen={() => router.push(`/(app)/jobs/${item.id}`)}
+            onAddPhoto={() => router.push(`/(app)/jobs/${item.id}?addPhoto=1`)}
+          />
         )}
       />
 
@@ -260,6 +292,15 @@ const styles = StyleSheet.create({
   cardTitle: { flex: 1, fontSize: 16, fontWeight: '800', color: colors.navy },
   address: { marginTop: spacing.sm, color: colors.navyMid },
   meta: { marginTop: spacing.xs, fontSize: 12, color: colors.muted },
+  cardPhotoBtn: {
+    alignSelf: 'flex-start',
+    marginTop: spacing.sm,
+    backgroundColor: colors.gold,
+    borderRadius: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+  },
+  cardPhotoBtnText: { color: colors.navy, fontSize: 14, fontWeight: '700' },
   errorBox: {
     margin: spacing.md,
     padding: spacing.md,

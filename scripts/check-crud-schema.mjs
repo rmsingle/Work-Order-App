@@ -81,8 +81,21 @@ if (!detail.includes('captionFromNote')) {
 }
 if (!detail.includes('Add photo')) fail('job detail must show an Add photo control');
 if (/\bfab:\s*\{/.test(detail)) fail('capture must not stay a bottom-right FAB');
-if (list.includes('Add photo') || list.includes('addPhoto=1')) {
-  fail('jobs list must not show Add photo; open the job first');
+if (!list.includes('Add photo')) fail('jobs list must show an Add photo control on each job');
+if (!list.includes('addPhoto=1')) fail('jobs list Add photo must open the job upload flow');
+const listPhotoBtn = list.match(/cardPhotoBtn:\s*\{([^}]+)\}/);
+if (!listPhotoBtn) fail('jobs list Add photo button style is missing');
+if (!listPhotoBtn[1].includes("alignSelf: 'flex-start'")) {
+  fail('jobs list Add photo must size to its label, not stretch across the card');
+}
+if (/width\s*:/.test(listPhotoBtn[1])) fail('jobs list Add photo must not set a width');
+if (!listPhotoBtn[1].includes('paddingVertical: 4') || !listPhotoBtn[1].includes('paddingHorizontal: 10')) {
+  fail('jobs list Add photo padding must stay tight');
+}
+const listPhotoBtnText = list.match(/cardPhotoBtnText:\s*\{([^}]+)\}/);
+const listPhotoFont = listPhotoBtnText?.[1].match(/fontSize:\s*(\d+)/);
+if (!listPhotoFont || Number(listPhotoFont[1]) > 14) {
+  fail('jobs list Add photo label must stay smaller than the job title');
 }
 if (!finishButton.includes('Mark complete')) fail('photo control must be labeled Mark complete');
 if (finishButton.includes('Job Finished') || detail.includes('Job Finished')) {
