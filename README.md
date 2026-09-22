@@ -70,7 +70,7 @@ README.md
 | Caption | `caption` (optional) |
 | Before / after | `kind` + `pair_id`. Left column is the original; the right column is Mark complete until the after photo replaces it |
 | Field notes | `job_notes` listed as text under Notes. Photos are not repeated there |
-| Fast Capture | **Add photo** in the job header and under the title, and on each jobs-list card. The sheet takes a note, then camera or library (web falls back to a file picker). Upload saves the note on `job_photos.caption` |
+| Fast Capture | **Add photo** is on the job detail page only: navy header and gold button under the title. Open the job from the list first. The sheet takes a note, then camera or library (web falls back to a file picker). Upload saves the note on `job_photos.caption` |
 | Mark complete | On each original photo, in the right-hand column. Opens the upload sheet for a completion photo (`kind = after`, shared `pair_id`). After upload, that photo replaces the button. **Upload and mark complete** sets `jobs.status` to `done`. Cancel does not change status |
 | Notes / comments | `job_notes` + add-note form |
 
@@ -116,7 +116,7 @@ Do these clicks once. The repo cannot create the project, turn on providers, or 
    npx expo start
    ```
 
-Sign up with email (or phone, after the SMS provider is saved). Open a job, or tap **Add photo** on a job card. Write a note, choose the picture, then **Upload photo**. The photo row’s `storage_path` should look like `{job_id}/{uuid}.jpg`, and `caption` should be the note you typed. A second signed-in device should see that photo after opening the job again. Rows that only have `local_uri` (captured before this storage pass) do not sync.
+Sign up with email (or phone, after the SMS provider is saved). Open a job from the list, then tap **Add photo**. Write a note, choose the picture, then **Upload photo**. The photo row’s `storage_path` should look like `{job_id}/{uuid}.jpg`, and `caption` should be the note you typed. A second signed-in device should see that photo after opening the job again. Rows that only have `local_uri` (captured before this storage pass) do not sync.
 
 ## Setup
 

@@ -81,8 +81,9 @@ if (!detail.includes('captionFromNote')) {
 }
 if (!detail.includes('Add photo')) fail('job detail must show an Add photo control');
 if (/\bfab:\s*\{/.test(detail)) fail('capture must not stay a bottom-right FAB');
-if (!list.includes('Add photo')) fail('jobs list must show an Add photo control on each job');
-if (!list.includes('addPhoto=1')) fail('jobs list Add photo must open the job upload flow');
+if (list.includes('Add photo') || list.includes('addPhoto=1')) {
+  fail('jobs list must not show Add photo; open the job first');
+}
 if (!finishButton.includes('Mark complete')) fail('photo control must be labeled Mark complete');
 if (finishButton.includes('Job Finished') || detail.includes('Job Finished')) {
   fail('user-facing Job Finished label must be renamed to Mark complete');
