@@ -32,38 +32,31 @@ export function JobListCard({
   updatedLabel,
   status,
   onOpen,
-  onAddPhoto,
 }: {
   title: string;
   address: string | null;
   updatedLabel: string;
   status: Job['status'];
   onOpen: () => void;
-  onAddPhoto: () => void;
 }) {
   return (
-    <View style={styles.card}>
-      <Pressable onPress={onOpen} accessibilityRole="button" accessibilityLabel={`Open ${title}`}>
-        <View style={styles.cardTop}>
-          <Text style={styles.cardTitle} numberOfLines={2}>
-            {title}
-          </Text>
-          <StatusBadge status={status} />
-        </View>
-        <Text style={styles.address} numberOfLines={2}>
-          {address || 'No address'}
+    <Pressable
+      style={styles.card}
+      onPress={onOpen}
+      accessibilityRole="button"
+      accessibilityLabel={`Open ${title}`}
+    >
+      <View style={styles.cardTop}>
+        <Text style={styles.cardTitle} numberOfLines={2}>
+          {title}
         </Text>
-        <Text style={styles.meta}>Updated {updatedLabel}</Text>
-      </Pressable>
-      <Pressable
-        style={styles.cardPhotoBtn}
-        onPress={onAddPhoto}
-        accessibilityRole="button"
-        accessibilityLabel={`Add photo to ${title}`}
-      >
-        <Text style={styles.cardPhotoBtnText}>Add photo</Text>
-      </Pressable>
-    </View>
+        <StatusBadge status={status} />
+      </View>
+      <Text style={styles.address} numberOfLines={2}>
+        {address || 'No address'}
+      </Text>
+      <Text style={styles.meta}>Updated {updatedLabel}</Text>
+    </Pressable>
   );
 }
 
@@ -165,7 +158,7 @@ export default function JobsListScreen() {
         <Text style={styles.helloText}>
           {profile?.full_name ? `Hi, ${profile.full_name}` : 'PSG jobs'}
         </Text>
-        <Text style={styles.helloSub}>Photos and notes on each property job</Text>
+        <Text style={styles.helloSub}>Open a job to add photos and notes.</Text>
       </View>
 
       {error ? (
@@ -208,7 +201,6 @@ export default function JobsListScreen() {
             updatedLabel={formatWhen(item.updated_at)}
             status={item.status}
             onOpen={() => router.push(`/(app)/jobs/${item.id}`)}
-            onAddPhoto={() => router.push(`/(app)/jobs/${item.id}?addPhoto=1`)}
           />
         )}
       />
@@ -292,15 +284,6 @@ const styles = StyleSheet.create({
   cardTitle: { flex: 1, fontSize: 16, fontWeight: '800', color: colors.navy },
   address: { marginTop: spacing.sm, color: colors.navyMid },
   meta: { marginTop: spacing.xs, fontSize: 12, color: colors.muted },
-  cardPhotoBtn: {
-    alignSelf: 'flex-start',
-    marginTop: spacing.sm,
-    backgroundColor: colors.gold,
-    borderRadius: 8,
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-  },
-  cardPhotoBtnText: { color: colors.navy, fontSize: 14, fontWeight: '700' },
   errorBox: {
     margin: spacing.md,
     padding: spacing.md,
