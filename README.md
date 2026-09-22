@@ -6,7 +6,7 @@ Working name: **PSG Job Tracker**
 Stack: Expo SDK 57 (React Native + TypeScript) · Expo Router · Supabase  
 Targets: iOS, Android, web
 
-CompanyCam-style MVP: **photos are the primary artifact** on each job (GPS + timestamp + optional caption), shown once with their notes. Field notes that are not on a photo are listed as text. Mark complete still pairs a completion shot in the data.
+CompanyCam-style MVP: **photos are the primary artifact** on each job (GPS + timestamp + optional caption). Each work item is one spaced two-column row: the original photo and its note on the left, and either **Mark complete** or the completion photo on the right. Field notes that are not on a photo are listed as text.
 
 ## What works
 
@@ -18,11 +18,11 @@ CompanyCam-style MVP: **photos are the primary artifact** on each job (GPS + tim
 | Sign out | Working |
 | Jobs list (title, address, status, updated_at, pull-to-refresh, empty state) | Working |
 | New Job (title + property address) | Working |
-| Job detail — each photo once, with its note | Working |
+| Job detail — two-column rows (original left, Mark complete or completion photo right) | Working |
 | Fast Capture (camera / library) | Working — uploads to Storage and sets `storage_path` |
 | GPS lat/lng on photos | Working when permission granted; null if denied |
-| Before / after pairs (`pair_id` on the photo rows) | Working — stored on the photos; not a second image list |
-| Mark complete on each photo | Working — completion photo, then `jobs.status = done` |
+| Before / after pairs (`pair_id` on the photo rows) | Working — one row per item; completion photo fills the right column |
+| Mark complete on each original photo | Working — button sits in the right column until the completion photo replaces it, then `jobs.status = done` |
 | Field notes (`job_notes`, text only) | Working |
 | Add note (author from profile) | Working |
 | Configure Supabase screen when env missing | Working |
@@ -65,13 +65,13 @@ README.md
 | Pattern | Implementation |
 | --- | --- |
 | Project / job site | `jobs` + Jobs list + New Job + Job detail header |
-| Photo as primary artifact | `job_photos.storage_path` + gallery strip |
+| Photo as primary artifact | `job_photos.storage_path` + two-column rows (`contentFit="contain"`) |
 | Geotag + timestamp | `lat`, `lng`, `created_at` |
 | Caption | `caption` (optional) |
-| Before / after | `kind` + `pair_id` on the photo rows. Job detail shows each photo once |
+| Before / after | `kind` + `pair_id`. Left column is the original; the right column is Mark complete until the after photo replaces it |
 | Field notes | `job_notes` listed as text under Notes. Photos are not repeated there |
 | Fast Capture | **Add photo** in the job header and under the title, and on each jobs-list card. The sheet takes a note, then camera or library (web falls back to a file picker). Upload saves the note on `job_photos.caption` |
-| Mark complete | On each photo. Opens the same upload sheet for a completion photo (`kind = after`, shared `pair_id`). **Upload and mark complete** sets `jobs.status` to `done`. Cancel does not change status |
+| Mark complete | On each original photo, in the right-hand column. Opens the upload sheet for a completion photo (`kind = after`, shared `pair_id`). After upload, that photo replaces the button. **Upload and mark complete** sets `jobs.status` to `done`. Cancel does not change status |
 | Notes / comments | `job_notes` + add-note form |
 
 ## Rob checklist (Supabase dashboard)

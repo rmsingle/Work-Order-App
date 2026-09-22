@@ -5,6 +5,7 @@ const root = path.resolve(import.meta.dirname, '..');
 const sql = fs.readFileSync(path.join(root, 'supabase/migrations/001_init.sql'), 'utf8');
 const storageSql = fs.readFileSync(path.join(root, 'supabase/migrations/002_storage_job_photos.sql'), 'utf8');
 const detail = fs.readFileSync(path.join(root, 'app/(app)/jobs/[id].tsx'), 'utf8');
+const pairCard = fs.readFileSync(path.join(root, 'components/BeforeAfterPair.tsx'), 'utf8');
 const finishButton = fs.readFileSync(path.join(root, 'components/JobFinishedButton.tsx'), 'utf8');
 const list = fs.readFileSync(path.join(root, 'app/(app)/jobs/index.tsx'), 'utf8');
 const auth = fs.readFileSync(path.join(root, 'contexts/AuthContext.tsx'), 'utf8');
@@ -90,6 +91,18 @@ if (!detail.includes('Upload and mark complete')) fail('confirm button must say 
 if (!detail.includes('‹ Back')) fail('job detail header must show a Back control');
 if (!detail.includes("dismissTo('/(app)/jobs')")) fail('Back must return to the jobs list');
 if (detail.includes('>Timeline<')) fail('job detail must not render a Timeline section');
+if (!detail.includes('BeforeAfterPairCard')) fail('each work item must render as a BeforeAfterPair row');
+if (!pairCard.includes('flexDirection: \'row\'')) fail('each work item must be a two-column row');
+if (!pairCard.includes('contentFit="contain"')) fail('photos must show the full image');
+if (pairCard.includes('contentFit="cover"') || detail.includes('contentFit="cover"')) {
+  fail('photos must not crop with cover');
+}
+if (!pairCard.includes('<JobFinishedButton')) {
+  fail('incomplete rows must show Mark complete in the completion column');
+}
+if (detail.includes('width: 110, height: 110')) fail('job photos must not be a thumbnail strip');
+if (detail.includes("height: 220")) fail('job photos must not be full-width heroes');
+if (detail.includes('showsHorizontalScrollIndicator')) fail('job photos must not be a horizontal strip');
 if (detail.includes('buildTimeline')) fail('job detail must not rebuild a photo timeline');
 if (!detail.includes("status: 'done'")) fail('Mark complete must set jobs.status to done');
 if (!detail.includes("kind: 'before'") && !detail.includes('completionTarget')) {

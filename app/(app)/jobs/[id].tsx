@@ -15,13 +15,13 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
-import { JobFinishedButton } from '@/components/JobFinishedButton';
+import { BeforeAfterPairCard } from '@/components/BeforeAfterPair';
 import { StatusBadge } from '@/components/StatusBadge';
 import { useAuth } from '@/contexts/AuthContext';
 import { colors, spacing } from '@/constants/theme';
 import { completionTarget, type FinishTarget } from '@/lib/finish-job';
 import { captureFromCamera, newPairId, pickFromLibrary } from '@/lib/photos';
-import { captionFromNote, photoDisplayUri } from '@/lib/photo-storage';
+import { captionFromNote } from '@/lib/photo-storage';
 import { removeJobPhoto, signedUrlsForPaths, uploadJobPhoto } from '@/lib/storage';
 import { getSupabase } from '@/lib/supabase';
 import type { Job, JobNote, JobPhoto, PhotoKind } from '@/lib/types';
@@ -32,10 +32,6 @@ function formatWhen(iso: string) {
   } catch {
     return iso;
   }
-}
-
-function photoUri(photo: JobPhoto, signedByPath: Readonly<Record<string, string>>) {
-  return photoDisplayUri(photo, signedByPath);
 }
 
 function firstParam(value: string | string[] | undefined) {
@@ -217,6 +213,34 @@ export default function JobDetailScreen() {
     }
     return Array.from(map.values()).filter((x) => x.before || x.after);
   }, [photos]);
+
+  const workRows = useMemo(() => {
+    const consumed = new Set<string>();
+    const rows: { key: string; before: JobPhoto | null; after: JobPhoto | null }[] = [];
+    for (const photo of photos) {
+      if (consumed.has(photo.id)) continue;
+      if (photo.pair_id && (photo.kind === 'before' || photo.kind === 'after')) {
+        const pair = pairs.find((entry) => entry.pair_id === photo.pair_id);
+        for (const other of photos) {
+          if (
+            other.pair_id === photo.pair_id &&
+            (other.kind === 'before' || other.kind === 'after')
+          ) {
+            consumed.add(other.id);
+          }
+        }
+        rows.push({
+          key: photo.pair_id,
+          before: pair?.before ?? null,
+          after: pair?.after ?? null,
+        });
+        continue;
+      }
+      consumed.add(photo.id);
+      rows.push({ key: photo.id, before: photo, after: null });
+    }
+    return rows;
+  }, [photos, pairs]);
 
   async function insertPhoto(opts: {
     localUri: string;
@@ -423,35 +447,16 @@ export default function JobDetailScreen() {
             </Text>
           </View>
         ) : (
-          photos.map((p) => {
-            const uri = photoUri(p, signedByPath);
-            return (
-              <View key={p.id} style={styles.photoCard}>
-                <Text style={styles.photoLabel}>
-                  {p.kind.toUpperCase()} · {formatWhen(p.created_at)}
-                </Text>
-                {uri ? (
-                  <Image source={{ uri }} style={styles.photoImage} contentFit="cover" />
-                ) : (
-                  <View style={[styles.photoImage, styles.thumbPlaceholder]}>
-                    <Text style={styles.thumbPhText}>No URI</Text>
-                  </View>
-                )}
-                {p.caption ? <Text style={styles.caption}>{p.caption}</Text> : null}
-                <Text style={styles.meta}>
-                  {p.author?.full_name || 'Unknown'}
-                  {p.lat != null && p.lng != null
-                    ? ` · ${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}`
-                    : ' · GPS unavailable'}
-                </Text>
-                <JobFinishedButton
-                  onPress={() => openJobFinished(p)}
-                  disabled={capturing || sheetOpen}
-                  hint="Marks this job complete"
-                />
-              </View>
-            );
-          })
+          workRows.map((row) => (
+            <BeforeAfterPairCard
+              key={row.key}
+              before={row.before}
+              after={row.after}
+              signedByPath={signedByPath}
+              onJobFinished={openJobFinished}
+              finishDisabled={capturing || sheetOpen}
+            />
+          ))
         )}
 
         {notes.length > 0 ? (
@@ -518,7 +523,7 @@ export default function JobDetailScreen() {
                     <Image
                       source={{ uri: pendingUpload.localUri }}
                       style={styles.preview}
-                      contentFit="cover"
+                      contentFit="contain"
                     />
                     <Text style={styles.fieldLabel}>Note</Text>
                     <TextInput
@@ -718,10 +723,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   photoLabel: { fontSize: 11, fontWeight: '800', color: colors.gold, marginBottom: 6 },
-  photoImage: { width: '100%', height: 220, borderRadius: 10, backgroundColor: colors.border },
-  thumbPlaceholder: { alignItems: 'center', justifyContent: 'center' },
-  thumbPhText: { fontSize: 11, color: colors.muted },
-  caption: { marginTop: 8, color: colors.navy },
   noteBody: { color: colors.navy, fontSize: 15, lineHeight: 22 },
   muted: { color: colors.muted },
   noteInput: {
