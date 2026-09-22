@@ -75,7 +75,7 @@ README.md
 | Caption | `caption` (optional) |
 | Before / after | `kind` + `pair_id`. Left column is the original; the right column is Mark complete until the after photo replaces it |
 | Field notes | `job_notes` listed as text under Notes. Photos are not repeated there |
-| Fast Capture | **Add photo** is on the job detail page: navy header and gold button under the title. The sheet offers **Use camera** and **Choose from library** only (web: photos or files). Photos save as `kind = general`. The jobs list cards have no Add photo control. **New Job** can attach several photos in the create sheet; they upload with the same `job-photos` pipeline after the job exists. Detail upload takes a note, then camera or library. |
+| Fast Capture | **Add photo** is the gold button under the job title on the detail page (not in the header). The sheet offers **Use camera** and **Choose from library** only (web: photos or files). Photos save as `kind = general`. The jobs list cards have no Add photo control. **New Job** can attach several photos in the create sheet; they upload with the same `job-photos` pipeline after the job exists. Detail upload takes a note, then camera or library. |
 | Mark complete | On each original photo, in the right-hand column. Opens the upload sheet for a completion photo (`kind = after`, shared `pair_id`). After upload, that photo replaces the button. **Upload and mark complete** sets `jobs.status` to `done`. Cancel does not change status |
 | Notes / comments | `job_notes` + add-note form |
 

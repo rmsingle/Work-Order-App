@@ -193,21 +193,9 @@ export default function JobDetailScreen() {
           <Text style={styles.headerBackText}>‹ Back</Text>
         </Pressable>
       ),
-      headerRight: job
-        ? () => (
-            <Pressable
-              onPress={openAddPhoto}
-              disabled={capturing || sheetOpen}
-              style={styles.headerBtn}
-              accessibilityRole="button"
-              accessibilityLabel="Add photo"
-            >
-              <Text style={styles.headerBtnText}>Add photo</Text>
-            </Pressable>
-          )
-        : undefined,
+      headerRight: () => <View style={{ width: 72 }} />,
     });
-  }, [navigation, job, capturing, sheetOpen, openAddPhoto, goToJobs]);
+  }, [navigation, job, goToJobs]);
 
   const pairs = useMemo(() => {
     const map = new Map<string, { pair_id: string; before: JobPhoto | null; after: JobPhoto | null }>();
@@ -730,7 +718,6 @@ const styles = StyleSheet.create({
   meta: { marginTop: 4, fontSize: 12, color: colors.muted },
   headerBtn: { paddingHorizontal: 12, paddingVertical: 6 },
   headerBackText: { color: colors.white, fontWeight: '700', fontSize: 16 },
-  headerBtnText: { color: colors.gold, fontWeight: '800' },
   addPhotoBtn: {
     marginTop: spacing.md,
     backgroundColor: colors.gold,

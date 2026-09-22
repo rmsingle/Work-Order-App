@@ -111,6 +111,13 @@ if (!detail.includes('captionFromNote')) {
 }
 if (!detail.includes('Add photo')) fail('job detail must show an Add photo control');
 if (/\bfab:\s*\{/.test(detail)) fail('capture must not stay a bottom-right FAB');
+const headerOptions = detail.match(/navigation\.setOptions\(\{([\s\S]*?)\}\);/);
+if (headerOptions && headerOptions[1].includes('Add photo')) {
+  fail('job detail must not put Add photo in the header; keep the on-page gold button');
+}
+if (!detail.includes('addPhotoBtn') || !detail.includes('addPhotoBtnText')) {
+  fail('job detail must keep the on-page Add photo button');
+}
 if (detail.includes('sheetBefore') || detail.includes('sheetAfter')) {
   fail('Add photo sheet must not offer before/after category buttons');
 }
