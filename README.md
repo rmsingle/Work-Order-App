@@ -23,7 +23,9 @@ CompanyCam-style MVP: **photos are the primary artifact** on each job (GPS + tim
 | GPS lat/lng on photos | Working when permission granted; null if denied |
 | Before / after pairs (`pair_id` on the photo rows) | Working — one row per item; completion photo fills the right column |
 | Mark complete on each original photo | Working — button sits in the right column until the completion photo replaces it, then `jobs.status = done` |
-| Archive job | Working — job detail sets `jobs.archived_at`; the Jobs list hides those rows |
+| Archive job | Working — confirm, then set `jobs.archived_at`. The active list hides that job. Archived jobs are listed below it |
+| Delete job | Working — confirm, then the job, its notes, and its photos are removed |
+| Job numbers | Working — each job keeps a `job_number` (`#1`, `#2`, …). New jobs take the next number. Archive and delete do not renumber the rest |
 | Field notes (`job_notes`, text only) | Working |
 | Add note (author from profile) | Working |
 | Configure Supabase screen when env missing | Working |
@@ -43,7 +45,7 @@ app/
   (app)/_layout.tsx         # auth gate + stack
   (app)/jobs/index.tsx      # jobs dashboard + New Job
   (app)/jobs/[id].tsx       # photo-first detail + Add photo at the top
-components/                 # ConfigureSupabase, StatusBadge, BeforeAfterPair, ArchiveJobButton
+components/                 # ConfigureSupabase, StatusBadge, BeforeAfterPair, ArchiveJobButton, DeleteJobButton
 contexts/AuthContext.tsx
 constants/theme.ts          # navy / gold / white
 lib/
@@ -54,11 +56,15 @@ lib/
   photos.ts                 # camera, library, GPS, pair ids
   phoneAuth.ts              # US phone → `{digits}@psg-jobs.app` login email
   archive-job.ts            # confirm before archiving a job
+  delete-job.ts             # confirm, then permanently delete a job
+  dialog.ts                 # web confirm/alert called on window (native uses Alert)
+  job-number.ts             # #N label; detect a database that has not added job_number yet
   timeline.ts
 supabase/migrations/
   001_init.sql
   002_storage_job_photos.sql
   003_jobs_archived_at.sql
+  004_jobs_job_number_and_delete.sql
 supabase/002_storage_policies_for_dashboard.txt
 .env.example
 vercel.json               # Vercel install, web export, dist, SPA rewrite
@@ -69,7 +75,7 @@ README.md
 
 | Pattern | Implementation |
 | --- | --- |
-| Project / job site | `jobs` + Jobs list + New Job + Job detail header. **Archive job** sets `archived_at` and the list hides that job |
+| Project / job site | `jobs` + Jobs list + New Job + Job detail header. Each card and the detail screen show a stable `#N`. **Archive job** sets `archived_at` and the active list hides that job. **Delete job** removes it after confirm |
 | Photo as primary artifact | `job_photos.storage_path` + two-column rows (`contentFit="contain"`) |
 | Geotag + timestamp | `lat`, `lng`, `created_at` |
 | Caption | `caption` (optional) |
@@ -103,10 +109,11 @@ Do these clicks once. The repo cannot create the project, turn on providers, or 
 4. **Enable Email.** **Authentication → Providers** (sometimes **Sign In / Providers**) → **Email** → turn it on → Save.
    - If **Confirm email** stays on, sign-up will not open the jobs list until the inbox link is clicked. Turn **Confirm email** off when you want a session immediately after sign-up.
 5. **Create employee logins in Supabase.** **Authentication → Users → Add user.** The email is the 10-digit US phone plus `@psg-jobs.app` (example: `3365462585@psg-jobs.app`). Set a password. Employees sign in on the app with that phone number and password. The app calls `signInWithPassword` on the synthetic email. They do not create their own accounts. SMS OTP is not used for this login.
-6. **Run the SQL, in order.** **SQL Editor** → New query → paste `supabase/migrations/001_init.sql` → **Run**. Then a new query → paste `supabase/migrations/002_storage_job_photos.sql` → **Run**. Then paste `supabase/migrations/003_jobs_archived_at.sql` → **Run**.
+6. **Run the SQL, in order.** **SQL Editor** → New query → paste `supabase/migrations/001_init.sql` → **Run**. Then a new query → paste `supabase/migrations/002_storage_job_photos.sql` → **Run**. Then paste `supabase/migrations/003_jobs_archived_at.sql` → **Run**. Then paste `supabase/migrations/004_jobs_job_number_and_delete.sql` → **Run**.
    - `001` creates profiles, jobs, notes, photos, RLS, the signup trigger, and three sample Winston-Salem jobs.
    - `002` creates the **private** `job-photos` bucket only. It does not create storage policies. The SQL Editor cannot `ALTER` or `CREATE POLICY` on `storage.objects` (error 42501; that table is owned by `supabase_storage_admin`). Re-run `002` if you already applied an older `001` that left the bucket commented out.
-   - `003` adds nullable `jobs.archived_at`. The Jobs list only shows rows where that column is null. If you already ran `001`, run `003` once so **Archive job** can save.
+   - `003` adds nullable `jobs.archived_at`. The active Jobs list only shows rows where that column is null. If you already ran `001`, run `003` once so **Archive job** can save.
+   - `004` adds `jobs.job_number` (unique, assigned by a sequence, backfilled in `created_at` order) and DELETE policies so **Delete job** can remove a job, its notes, and its photos. Run `004` once on a database that already has `001`–`003`. Numbers stay put when other jobs are archived or deleted.
 7. **Add the four storage policies.** After `002`, open **Dashboard → Storage → Policies** for the `job-photos` bucket and add these four policies. Role is **authenticated**. Each expression is `bucket_id = 'job-photos'`:
    - `job_photos_storage_select` — SELECT, USING
    - `job_photos_storage_insert` — INSERT, WITH CHECK
@@ -188,12 +195,12 @@ Email confirmation and auth redirects use that list. Without it, a link in an em
 ## Schema (summary)
 
 - **profiles** — `id` = `auth.users.id`, `full_name`, `phone`, `role` (`owner_admin` \| `employee` \| `customer`)
-- **jobs** — title, property_address, status (`open` \| `in_progress` \| `done` \| `cancelled`), created_by, timestamps, `archived_at` (null = on the dashboard). The app selects active jobs (`archived_at` is null), inserts a new job (`title`, `property_address`, `status`, `created_by`), updates `updated_at`, and archives by setting `archived_at`
+- **jobs** — `job_number` (stable `#N`), title, property_address, status (`open` \| `in_progress` \| `done` \| `cancelled`), created_by, timestamps, `archived_at` (null = on the active dashboard). The app selects active jobs (`archived_at` is null) and archived jobs separately. Insert sends `title`, `property_address`, `status`, `created_by`; the database assigns the next `job_number`. Archive sets `archived_at`. Delete removes the row after confirm
 - **job_notes** — job_id, author_id, body, created_at. The app selects and inserts notes. It does not edit or delete them
 - **job_photos** — job_id, storage_path (bucket object key), local_uri (legacy only), lat, lng, caption, kind (`before`|`after`|`general`), pair_id, created_by, created_at. Capture inserts `storage_path` and leaves `local_uri` null
 - **storage** — private bucket `job-photos` (`002_storage_job_photos.sql`). After `002`, add the four `job_photos_storage_*` policies in **Dashboard → Storage → Policies** (authenticated select/insert/update/delete on that bucket only). Display uses 1-hour signed URLs
 - Trigger: new `auth.users` → `profiles` row
-- RLS: authenticated select/insert/update on jobs, notes, photos (shared foundation; roles tighten later)
+- RLS: authenticated select/insert/update on jobs, notes, photos, plus delete (`004`) so a job can be removed permanently (shared foundation; roles tighten later)
 - Seed: 3 SAMPLE Winston-Salem area jobs (Gilmer / Raintree / Queen)
 
 ## Brand

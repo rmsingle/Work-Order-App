@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Linking,
   Modal,
@@ -18,10 +17,14 @@ import { Image } from 'expo-image';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { ArchiveJobButton } from '@/components/ArchiveJobButton';
 import { BeforeAfterPairCard } from '@/components/BeforeAfterPair';
+import { DeleteJobButton } from '@/components/DeleteJobButton';
 import { StatusBadge } from '@/components/StatusBadge';
 import { useAuth } from '@/contexts/AuthContext';
 import { colors, spacing } from '@/constants/theme';
 import { confirmArchiveJob } from '@/lib/archive-job';
+import { confirmDeleteJob, deleteJobPermanently } from '@/lib/delete-job';
+import { showMessage } from '@/lib/dialog';
+import { formatJobNumber, isMissingJobNumberColumn } from '@/lib/job-number';
 import { completionTarget, type FinishTarget } from '@/lib/finish-job';
 import { captureFromCamera, newPairId, pickFromLibrary } from '@/lib/photos';
 import { captionFromNote } from '@/lib/photo-storage';
@@ -78,6 +81,7 @@ export default function JobDetailScreen() {
   const [pendingUpload, setPendingUpload] = useState<PendingUpload | null>(null);
   const [finishTarget, setFinishTarget] = useState<FinishTarget | null>(null);
   const [archiving, setArchiving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const handledAddPhoto = useRef(false);
 
   const load = useCallback(async () => {
@@ -85,12 +89,20 @@ export default function JobDetailScreen() {
     setError(null);
     try {
       const supabase = getSupabase();
-      const [jobRes, photoRes, noteRes] = await Promise.all([
-        supabase
-          .from('jobs')
-          .select('id, title, property_address, status, created_by, created_at, updated_at')
-          .eq('id', id)
-          .single(),
+      const jobWithNumber = await supabase
+        .from('jobs')
+        .select('id, job_number, title, property_address, status, created_by, created_at, updated_at, archived_at')
+        .eq('id', id)
+        .single();
+      const jobRes =
+        jobWithNumber.error && isMissingJobNumberColumn(jobWithNumber.error.message)
+          ? await supabase
+              .from('jobs')
+              .select('id, title, property_address, status, created_by, created_at, updated_at, archived_at')
+              .eq('id', id)
+              .single()
+          : jobWithNumber;
+      const [photoRes, noteRes] = await Promise.all([
         supabase
           .from('job_photos')
           .select(
@@ -180,7 +192,7 @@ export default function JobDetailScreen() {
 
   useLayoutEffect(() => {
     navigation.setOptions({
-      title: job?.title ?? 'Job',
+      title: formatJobNumber(job?.job_number) ?? job?.title ?? 'Job',
       headerTitleAlign: 'center',
       headerBackVisible: false,
       headerLeft: () => (
@@ -319,7 +331,7 @@ export default function JobDetailScreen() {
       setSheetStep('confirm');
       setSheetOpen(true);
     } catch (e) {
-      Alert.alert('Capture failed', e instanceof Error ? e.message : 'Unknown error');
+      showMessage('Capture failed', e instanceof Error ? e.message : 'Unknown error');
       setSheetStep('source');
       setSheetOpen(true);
     } finally {
@@ -348,7 +360,7 @@ export default function JobDetailScreen() {
       setSheetOpen(false);
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Unknown error';
-      Alert.alert('Upload failed', message);
+      showMessage('Upload failed', message);
       if (message.startsWith('Completion photo saved')) {
         setPendingUpload(null);
         setPhotoNote('');
@@ -375,27 +387,46 @@ export default function JobDetailScreen() {
       await getSupabase().from('jobs').update({ updated_at: new Date().toISOString() }).eq('id', id);
       await load();
     } catch (e) {
-      Alert.alert('Note failed', e instanceof Error ? e.message : 'Unknown error');
+      showMessage('Note failed', e instanceof Error ? e.message : 'Unknown error');
     } finally {
       setSavingNote(false);
     }
   }
 
   async function archiveJob() {
-    if (!id || !job || archiving) return;
-    const confirmed = await confirmArchiveJob(job.title);
-    if (!confirmed) return;
-    setArchiving(true);
+    if (!id || !job || archiving || deleting) return;
     try {
-      const { error: upErr } = await getSupabase()
+      const confirmed = await confirmArchiveJob(job.title);
+      if (!confirmed) return;
+      setArchiving(true);
+      const { data, error: upErr } = await getSupabase()
         .from('jobs')
         .update({ archived_at: new Date().toISOString() })
-        .eq('id', id);
+        .eq('id', id)
+        .select('id')
+        .maybeSingle();
       if (upErr) throw upErr;
-      router.dismissTo('/(app)/jobs');
+      if (!data?.id) {
+        throw new Error('Archive did not save. The job is still on the active list.');
+      }
+      router.replace('/(app)/jobs');
     } catch (e) {
-      Alert.alert('Could not archive', e instanceof Error ? e.message : 'Unknown error');
+      showMessage('Could not archive', e instanceof Error ? e.message : 'Unknown error');
       setArchiving(false);
+    }
+  }
+
+  async function deleteJob() {
+    if (!id || !job || deleting || archiving) return;
+    try {
+      const confirmed = await confirmDeleteJob(job.title, job.job_number);
+      if (!confirmed) return;
+      setDeleting(true);
+      await deleteJobPermanently(id);
+      router.replace('/(app)/jobs');
+    } catch (e) {
+      showMessage('Could not delete', e instanceof Error ? e.message : 'Unknown error');
+      setDeleting(false);
     }
   }
 
@@ -426,7 +457,7 @@ export default function JobDetailScreen() {
     try {
       await Linking.openURL(mapsSearchUrl(address));
     } catch (e) {
-      Alert.alert('Could not open Maps', e instanceof Error ? e.message : 'Google Maps did not open.');
+      showMessage('Could not open Maps', e instanceof Error ? e.message : 'Google Maps did not open.');
     }
   }
 
@@ -437,6 +468,9 @@ export default function JobDetailScreen() {
     >
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.headerCard}>
+          {formatJobNumber(job.job_number) ? (
+            <Text style={styles.jobNumber}>{formatJobNumber(job.job_number)}</Text>
+          ) : null}
           <View style={styles.headerRow}>
             <Text style={styles.title}>{job.title}</Text>
             <StatusBadge status={job.status} />
@@ -471,10 +505,19 @@ export default function JobDetailScreen() {
               <Text style={styles.addPhotoBtnText}>Add photo</Text>
             )}
           </Pressable>
-          <ArchiveJobButton
-            onPress={archiveJob}
-            disabled={capturing || sheetOpen}
-            busy={archiving}
+          {job.archived_at ? (
+            <Text style={styles.archivedNote}>Archived. It is off the active Jobs list.</Text>
+          ) : (
+            <ArchiveJobButton
+              onPress={archiveJob}
+              disabled={capturing || sheetOpen || deleting}
+              busy={archiving}
+            />
+          )}
+          <DeleteJobButton
+            onPress={deleteJob}
+            disabled={capturing || sheetOpen || archiving}
+            busy={deleting}
           />
         </View>
 
@@ -698,7 +741,20 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.sm },
+  jobNumber: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.navy,
+    color: colors.gold,
+    fontWeight: '900',
+    fontSize: 22,
+    borderRadius: 8,
+    overflow: 'hidden',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginBottom: spacing.sm,
+  },
   title: { flex: 1, fontSize: 20, fontWeight: '800', color: colors.navy },
+  archivedNote: { marginTop: spacing.md, color: colors.muted, fontWeight: '700', textAlign: 'center' },
   addressRow: {
     marginTop: spacing.sm,
     flexDirection: 'row',

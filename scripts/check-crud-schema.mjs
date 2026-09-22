@@ -5,12 +5,16 @@ const root = path.resolve(import.meta.dirname, '..');
 const sql = fs.readFileSync(path.join(root, 'supabase/migrations/001_init.sql'), 'utf8');
 const storageSql = fs.readFileSync(path.join(root, 'supabase/migrations/002_storage_job_photos.sql'), 'utf8');
 const archiveSql = fs.readFileSync(path.join(root, 'supabase/migrations/003_jobs_archived_at.sql'), 'utf8');
+const numberSql = fs.readFileSync(path.join(root, 'supabase/migrations/004_jobs_job_number_and_delete.sql'), 'utf8');
 const detail = fs.readFileSync(path.join(root, 'app/(app)/jobs/[id].tsx'), 'utf8');
 const login = fs.readFileSync(path.join(root, 'app/(auth)/login.tsx'), 'utf8');
 const phoneAuth = fs.readFileSync(path.join(root, 'lib/phoneAuth.ts'), 'utf8');
 const pairCard = fs.readFileSync(path.join(root, 'components/BeforeAfterPair.tsx'), 'utf8');
 const finishButton = fs.readFileSync(path.join(root, 'components/JobFinishedButton.tsx'), 'utf8');
 const archiveButton = fs.readFileSync(path.join(root, 'components/ArchiveJobButton.tsx'), 'utf8');
+const deleteButton = fs.readFileSync(path.join(root, 'components/DeleteJobButton.tsx'), 'utf8');
+const dialog = fs.readFileSync(path.join(root, 'lib/dialog.ts'), 'utf8');
+const deleteJob = fs.readFileSync(path.join(root, 'lib/delete-job.ts'), 'utf8');
 const list = fs.readFileSync(path.join(root, 'app/(app)/jobs/index.tsx'), 'utf8');
 const auth = fs.readFileSync(path.join(root, 'contexts/AuthContext.tsx'), 'utf8');
 
@@ -68,7 +72,11 @@ function addedColumns(source, table) {
   return columns;
 }
 
-const jobs = [...tableColumns(sql, 'jobs'), ...addedColumns(archiveSql, 'jobs')];
+const jobs = [
+  ...tableColumns(sql, 'jobs'),
+  ...addedColumns(archiveSql, 'jobs'),
+  ...addedColumns(numberSql, 'jobs'),
+];
 const notes = tableColumns(sql, 'job_notes');
 const photos = tableColumns(sql, 'job_photos');
 const profiles = tableColumns(sql, 'profiles');
@@ -144,6 +152,32 @@ if (!detail.includes('archived_at:') || !detail.includes('confirmArchiveJob') ||
   fail('job detail must confirm, then set archived_at');
 }
 if (!archiveButton.includes('Archive job')) fail('archive control must be labeled Archive job');
+if (!dialog.includes('globalThis.confirm(')) {
+  fail('web confirm must be called as globalThis.confirm() so Window stays the receiver');
+}
+if (/const\s+\w+\s*=\s*globalThis\.confirm/.test(dialog)) {
+  fail('do not detach window.confirm; calling it without Window throws Illegal invocation');
+}
+if (!dialog.includes('globalThis.alert(')) fail('web messages must use globalThis.alert');
+if (!list.includes('job_number') || !detail.includes('job_number')) {
+  fail('jobs list and detail must select job_number');
+}
+if (!list.includes('formatJobNumber') || !detail.includes('formatJobNumber')) {
+  fail('job number must show on the dashboard card and the job detail screen');
+}
+if (!numberSql.includes('job_number integer')) fail('004 must add job_number');
+if (!numberSql.includes('jobs_job_number_seq')) fail('004 must assign job numbers from a sequence');
+if (!numberSql.includes('jobs_job_number_uidx')) fail('004 must keep job_number unique');
+if (!jobs.includes('job_number')) fail('job_number must be a jobs column');
+if (!detail.includes('confirmDeleteJob') || !detail.includes('deleteJobPermanently') || !detail.includes('DeleteJobButton')) {
+  fail('job detail must confirm, then permanently delete');
+}
+if (!deleteButton.includes('Delete job')) fail('delete control must be labeled Delete job');
+if (!deleteJob.includes(".from('jobs').delete(")) fail('delete must remove the jobs row');
+if (!deleteJob.includes(".from('job_notes').delete(") || !deleteJob.includes(".from('job_photos').delete(")) {
+  fail('delete must remove notes and photos');
+}
+if (!list.includes('>Archived<')) fail('archived jobs must stay reachable so they can be deleted');
 if (!list.includes("headerTitleAlign: 'center'")) fail('Jobs title must be centered in the header');
 const newJobBtn = list.match(/newJobBtn:\s*\{([^}]+)\}/);
 if (!newJobBtn || !newJobBtn[1].includes('backgroundColor: colors.gold') || !newJobBtn[1].includes('paddingVertical: 14')) {
@@ -219,6 +253,9 @@ for (const required of ['title', 'property_address', 'status', 'created_by']) {
 const policies = [
   ['001', sql, 'jobs_select_authenticated'],
   ['001', sql, 'jobs_update_authenticated'],
+  ['004', numberSql, 'jobs_delete_authenticated'],
+  ['004', numberSql, 'job_notes_delete_authenticated'],
+  ['004', numberSql, 'job_photos_delete_authenticated'],
   ['001', sql, 'job_notes_select_authenticated'],
   ['001', sql, 'job_notes_insert_authenticated'],
   ['001', sql, 'job_photos_select_authenticated'],
