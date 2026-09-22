@@ -18,7 +18,7 @@ CompanyCam-style MVP: **photos are the primary artifact** on each job (GPS + tim
 | Sign out | Working |
 | Jobs list (centered title, address, status, updated_at, pull-to-refresh, empty state) | Working — gold **New Job** at the top; no Add photo on the cards |
 | New Job (title + property address + photos) | Working — gold button opens the sheet; photos upload to `job-photos` after the job row exists |
-| Job detail — centered header title, two-column rows, Open in Google Maps for the address | Working |
+| Job detail — centered header title, two-column rows, Open in Google Maps beside the address | Working |
 | Fast Capture (camera / library) | Working — uploads to Storage and sets `storage_path` |
 | GPS lat/lng on photos | Working when permission granted; null if denied |
 | Before / after pairs (`pair_id` on the photo rows) | Working — one row per item; completion photo fills the right column |
