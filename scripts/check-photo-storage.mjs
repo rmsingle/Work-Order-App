@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { completionTarget } from '../lib/finish-job.ts';
+import { phoneToLoginEmail } from '../lib/phoneAuth.ts';
 import {
   buildObjectPath,
   captionFromNote,
@@ -49,5 +50,11 @@ assert.equal(before.link, null);
 const after = completionTarget({ id: 'photo-3', kind: 'after', pair_id: 'pair-2' }, 'pair-2');
 assert.equal(after.link, null);
 assert.equal(after.pairId, 'pair-2');
+
+assert.equal(phoneToLoginEmail('336-546-2585'), '3365462585@psg-jobs.app');
+assert.equal(phoneToLoginEmail('(336) 546-2585'), '3365462585@psg-jobs.app');
+assert.equal(phoneToLoginEmail('3365462585'), '3365462585@psg-jobs.app');
+assert.equal(phoneToLoginEmail('+1 336 546 2585'), '3365462585@psg-jobs.app');
+assert.throws(() => phoneToLoginEmail('555'), /10-digit/);
 
 console.log('photo storage display checks passed');

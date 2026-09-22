@@ -7,6 +7,7 @@ import React, {
   useState,
 } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
+import { phoneToLoginEmail } from '@/lib/phoneAuth';
 import { getSupabase, isSupabaseConfigured } from '@/lib/supabase';
 import type { Profile } from '@/lib/types';
 
@@ -16,6 +17,7 @@ type AuthContextValue = {
   profile: Profile | null;
   loading: boolean;
   signInWithEmail: (email: string, password: string) => Promise<void>;
+  signInWithPhonePassword: (phone: string, password: string) => Promise<void>;
   signUpWithEmail: (email: string, password: string, fullName: string) => Promise<void>;
   signInWithPhone: (phone: string) => Promise<void>;
   verifyPhoneOtp: (phone: string, token: string) => Promise<void>;
@@ -85,6 +87,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (error) throw error;
   }, []);
 
+  const signInWithPhonePassword = useCallback(
+    async (phone: string, password: string) => {
+      await signInWithEmail(phoneToLoginEmail(phone), password);
+    },
+    [signInWithEmail]
+  );
+
   const signUpWithEmail = useCallback(
     async (email: string, password: string, fullName: string) => {
       const { error } = await getSupabase().auth.signUp({
@@ -127,6 +136,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       profile,
       loading,
       signInWithEmail,
+      signInWithPhonePassword,
       signUpWithEmail,
       signInWithPhone,
       verifyPhoneOtp,
@@ -138,6 +148,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       profile,
       loading,
       signInWithEmail,
+      signInWithPhonePassword,
       signUpWithEmail,
       signInWithPhone,
       verifyPhoneOtp,

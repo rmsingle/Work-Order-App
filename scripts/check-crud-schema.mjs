@@ -5,6 +5,8 @@ const root = path.resolve(import.meta.dirname, '..');
 const sql = fs.readFileSync(path.join(root, 'supabase/migrations/001_init.sql'), 'utf8');
 const storageSql = fs.readFileSync(path.join(root, 'supabase/migrations/002_storage_job_photos.sql'), 'utf8');
 const detail = fs.readFileSync(path.join(root, 'app/(app)/jobs/[id].tsx'), 'utf8');
+const login = fs.readFileSync(path.join(root, 'app/(auth)/login.tsx'), 'utf8');
+const phoneAuth = fs.readFileSync(path.join(root, 'lib/phoneAuth.ts'), 'utf8');
 const pairCard = fs.readFileSync(path.join(root, 'components/BeforeAfterPair.tsx'), 'utf8');
 const finishButton = fs.readFileSync(path.join(root, 'components/JobFinishedButton.tsx'), 'utf8');
 const list = fs.readFileSync(path.join(root, 'app/(app)/jobs/index.tsx'), 'utf8');
@@ -64,6 +66,22 @@ assertSubset('jobs detail select', selectColumns(detail, 'jobs'), jobs);
 assertSubset('job_notes select', selectColumns(detail, 'job_notes'), notes);
 assertSubset('job_photos select', selectColumns(detail, 'job_photos'), photos);
 assertSubset('profiles select', selectColumns(auth, 'profiles'), profiles);
+if (!phoneAuth.includes('export function phoneToLoginEmail')) {
+  fail('phone login email mapping must live in lib/phoneAuth.ts');
+}
+if (!phoneAuth.includes('@psg-jobs.app')) fail('phone login must use the psg-jobs.app email domain');
+if (!auth.includes('signInWithPhonePassword') || !auth.includes('phoneToLoginEmail')) {
+  fail('AuthContext must sign in with phone by mapping to email');
+}
+if (!auth.includes('signInWithPassword')) fail('phone login must use signInWithPassword');
+if (!login.includes('Phone number')) fail('login must label the phone field');
+if (!login.includes('signInWithPhonePassword')) fail('login must sign in with phone and password');
+if (login.includes('Send code') || login.includes('E.164') || login.includes('SMS code')) {
+  fail('login must not offer SMS OTP');
+}
+if (login.includes('Sign up') || login.includes('Create account')) {
+  fail('login must not offer public sign up');
+}
 
 const noteInsert = insertColumns(detail, 'job_notes');
 assertSubset('job_notes insert', noteInsert, notes);

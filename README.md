@@ -12,8 +12,8 @@ CompanyCam-style MVP: **photos are the primary artifact** on each job (GPS + tim
 
 | Feature | Status |
 | --- | --- |
-| Email sign-in / sign-up | Working (Supabase Auth) |
-| Phone OTP sign-in | Working after Phone + an SMS provider are enabled in Supabase |
+| Phone + password sign-in | Working — US phone maps to `{10digits}@psg-jobs.app`, then `signInWithPassword` |
+| Email sign-in | Working as a secondary option. The login screen does not offer public sign-up |
 | Session persistence | Working (AsyncStorage / localStorage) |
 | Sign out | Working |
 | Jobs list (centered title, address, status, updated_at, pull-to-refresh, empty state) | Working — gold **New Job** at the top; no Add photo on the cards |
@@ -38,7 +38,7 @@ App files live at the repository root (Work-Order-App):
 app/
   _layout.tsx
   index.tsx                 # session redirect or Configure Supabase
-  (auth)/login.tsx          # email or phone
+  (auth)/login.tsx          # phone + password (email as a fallback)
   (app)/_layout.tsx         # auth gate + stack
   (app)/jobs/index.tsx      # jobs dashboard + New Job
   (app)/jobs/[id].tsx       # photo-first detail + Add photo at the top
@@ -51,6 +51,7 @@ lib/
   photo-storage.ts          # bucket name, object path, display URL
   types.ts
   photos.ts                 # camera, library, GPS, pair ids
+  phoneAuth.ts              # US phone → `{digits}@psg-jobs.app` login email
   timeline.ts
 supabase/migrations/
   001_init.sql
@@ -98,9 +99,7 @@ Do these clicks once. The repo cannot create the project, turn on providers, or 
    `.env` is gitignored. Commit `.env.example` only.
 4. **Enable Email.** **Authentication → Providers** (sometimes **Sign In / Providers**) → **Email** → turn it on → Save.
    - If **Confirm email** stays on, sign-up will not open the jobs list until the inbox link is clicked. Turn **Confirm email** off when you want a session immediately after sign-up.
-5. **Enable Phone OTP.** Same Providers page → **Phone** → turn it on → Save.
-   - Phone will not send a code until an SMS provider is filled in on that screen (Twilio, Vonage, MessageBird, or TextLocal). That account is yours; this repo does not configure it.
-   - The login screen expects E.164 numbers (`+13365551234`).
+5. **Create employee logins in Supabase.** **Authentication → Users → Add user.** The email is the 10-digit US phone plus `@psg-jobs.app` (example: `3365462585@psg-jobs.app`). Set a password. Employees sign in on the app with that phone number and password. The app calls `signInWithPassword` on the synthetic email. They do not create their own accounts. SMS OTP is not used for this login.
 6. **Run the SQL, in order.** **SQL Editor** → New query → paste `supabase/migrations/001_init.sql` → **Run**. Then a new query → paste `supabase/migrations/002_storage_job_photos.sql` → **Run**.
    - `001` creates profiles, jobs, notes, photos, RLS, the signup trigger, and three sample Winston-Salem jobs.
    - `002` creates the **private** `job-photos` bucket only. It does not create storage policies. The SQL Editor cannot `ALTER` or `CREATE POLICY` on `storage.objects` (error 42501; that table is owned by `supabase_storage_admin`). Re-run `002` if you already applied an older `001` that left the bucket commented out.
@@ -117,7 +116,7 @@ Do these clicks once. The repo cannot create the project, turn on providers, or 
    npx expo start
    ```
 
-Sign up with email (or phone, after the SMS provider is saved). Open a job from the list, then tap **Add photo**. Write a note, choose the picture, then **Upload photo**. The photo row’s `storage_path` should look like `{job_id}/{uuid}.jpg`, and `caption` should be the note you typed. A second signed-in device should see that photo after opening the job again. Rows that only have `local_uri` (captured before this storage pass) do not sync.
+Sign in with the phone number and password from the Supabase user (or **Sign in with email**). Open a job from the list, then tap **Add photo**. Write a note, choose the picture, then **Upload photo**. The photo row’s `storage_path` should look like `{job_id}/{uuid}.jpg`, and `caption` should be the note you typed. A second signed-in device should see that photo after opening the job again. Rows that only have `local_uri` (captured before this storage pass) do not sync.
 
 10. **After the first Vercel deploy**, add that production URL in Supabase. **Authentication → URL Configuration**: set **Site URL** to the production URL, and add the same URL under **Redirect URLs**. Details are in [Deploy the web app on Vercel](#deploy-the-web-app-on-vercel).
 
