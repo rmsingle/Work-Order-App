@@ -174,6 +174,7 @@ export default function JobDetailScreen() {
   useLayoutEffect(() => {
     navigation.setOptions({
       title: job?.title ?? 'Job',
+      headerTitleAlign: 'center',
       headerBackVisible: false,
       headerLeft: () => (
         <Pressable

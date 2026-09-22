@@ -89,6 +89,13 @@ if (finishButton.includes('Job Finished') || detail.includes('Job Finished')) {
   fail('user-facing Job Finished label must be renamed to Mark complete');
 }
 if (!detail.includes('Upload and mark complete')) fail('confirm button must say Upload and mark complete');
+const appLayout = fs.readFileSync(path.join(root, 'app/(app)/_layout.tsx'), 'utf8');
+if (!appLayout.includes("headerTitleAlign: 'center'")) {
+  fail('app screen titles must be centered in the header');
+}
+if (!detail.includes("headerTitleAlign: 'center'")) {
+  fail('job detail title must be centered, not beside Back');
+}
 if (!detail.includes('‹ Back')) fail('job detail header must show a Back control');
 if (!detail.includes("dismissTo('/(app)/jobs')")) fail('Back must return to the jobs list');
 if (detail.includes('>Timeline<')) fail('job detail must not render a Timeline section');
