@@ -4,7 +4,7 @@ Property maintenance job tracker for **Property Services Group LLC** (PSG / Rob 
 
 Working name: **PSG Job Tracker**  
 Stack: Expo SDK 57 (React Native + TypeScript) · Expo Router · Supabase  
-Targets: iOS, Android, web
+Targets: iOS, Android, and a public web app (static export on Vercel, opened in a phone browser)
 
 CompanyCam-style MVP: **photos are the primary artifact** on each job (GPS + timestamp + optional caption). Each work item is one spaced two-column row: the original photo and its note on the left, and either **Mark complete** or the completion photo on the right. Field notes that are not on a photo are listed as text.
 
@@ -57,6 +57,7 @@ supabase/migrations/
   002_storage_job_photos.sql
 supabase/002_storage_policies_for_dashboard.txt
 .env.example
+vercel.json               # Vercel install, web export, dist, SPA rewrite
 README.md
 ```
 
@@ -118,6 +119,8 @@ Do these clicks once. The repo cannot create the project, turn on providers, or 
 
 Sign up with email (or phone, after the SMS provider is saved). Open a job from the list, then tap **Add photo**. Write a note, choose the picture, then **Upload photo**. The photo row’s `storage_path` should look like `{job_id}/{uuid}.jpg`, and `caption` should be the note you typed. A second signed-in device should see that photo after opening the job again. Rows that only have `local_uri` (captured before this storage pass) do not sync.
 
+10. **After the first Vercel deploy**, add that production URL in Supabase. **Authentication → URL Configuration**: set **Site URL** to the production URL, and add the same URL under **Redirect URLs**. Details are in [Deploy the web app on Vercel](#deploy-the-web-app-on-vercel).
+
 ## Setup
 
 ### 1. Install
@@ -142,6 +145,42 @@ Typecheck and confirm app writes still match the SQL:
 npm run typecheck
 npm run check:schema
 ```
+
+## Deploy the web app on Vercel
+
+Phone browsers load a static Expo web export. `app.json` sets `web.output` to `single`, so `npx expo export -p web` writes one `dist/index.html` plus JS and CSS. Job URLs such as `/jobs/<id>` are not known at build time, so Vercel rewrites every path that is not a real file to `/`, which serves that `index.html`. Expo Router then opens the screen. Do not deploy this from a laptop; create the Vercel project and let it build from git.
+
+`vercel.json` at the repo root is the project config. In the Vercel dashboard, set **Framework Preset** to **Other** and use these three settings (they match the file):
+
+| Setting | Value |
+| --- | --- |
+| Install Command | `npm ci` |
+| Build Command | `npx expo export -p web` |
+| Output Directory | `dist` |
+
+`npm run build` and `npm run export:web` run the same export locally.
+
+### Environment variables
+
+In **Vercel → Project → Settings → Environment Variables**, set these for Production (and Preview, if preview URLs should log in). Expo inlines `EXPO_PUBLIC_*` **at build time**. Set them before the first deploy, and redeploy after any change.
+
+| Name | Value |
+| --- | --- |
+| `EXPO_PUBLIC_SUPABASE_URL` | Project URL (`https://<ref>.supabase.co`) |
+| `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Publishable key (`sb_publishable_…`) or the legacy **anon** key |
+
+Never set `service_role` or a secret key (`sb_secret_…`). Those bypass row level security. The app refuses to start if one is used as `EXPO_PUBLIC_SUPABASE_ANON_KEY`.
+
+`.env` stays gitignored. Commit `.env.example` only. Do not paste real keys into the repo.
+
+### Supabase Auth URL
+
+After the first deploy, open **Authentication → URL Configuration** and add the production URL (for example `https://<project>.vercel.app`):
+
+- **Site URL** — the production URL
+- **Redirect URLs** — the same production URL, plus any preview URL you will actually use
+
+Email confirmation and auth redirects use that list. Without it, a link in an email can send someone to localhost.
 
 ## Schema (summary)
 
