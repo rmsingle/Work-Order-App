@@ -6,7 +6,7 @@ Working name: **PSG Job Tracker**
 Stack: Expo SDK 57 (React Native + TypeScript) · Expo Router · Supabase  
 Targets: iOS, Android, web
 
-CompanyCam-style MVP: **photos are the primary artifact** on each job (GPS + timestamp + optional caption), with a chronological timeline of photos + notes, before/after pairing, and a Fast Capture action.
+CompanyCam-style MVP: **photos are the primary artifact** on each job (GPS + timestamp + optional caption), shown once with their notes. Field notes that are not on a photo are listed as text. Mark complete still pairs a completion shot in the data.
 
 ## What works
 
@@ -18,12 +18,12 @@ CompanyCam-style MVP: **photos are the primary artifact** on each job (GPS + tim
 | Sign out | Working |
 | Jobs list (title, address, status, updated_at, pull-to-refresh, empty state) | Working |
 | New Job (title + property address) | Working |
-| Job detail — photo gallery strip | Working |
+| Job detail — each photo once, with its note | Working |
 | Fast Capture (camera / library) | Working — uploads to Storage and sets `storage_path` |
 | GPS lat/lng on photos | Working when permission granted; null if denied |
-| Before / after pairs (`pair_id`, side-by-side UI) | Working |
+| Before / after pairs (`pair_id` on the photo rows) | Working — stored on the photos; not a second image list |
 | Mark complete on each photo | Working — completion photo, then `jobs.status = done` |
-| Timeline (photos + notes, newest first) | Working |
+| Field notes (`job_notes`, text only) | Working |
 | Add note (author from profile) | Working |
 | Configure Supabase screen when env missing | Working |
 | Supabase Storage upload (`job-photos` private bucket) | Working — `storage_path` set; signed URLs for display |
@@ -68,10 +68,10 @@ README.md
 | Photo as primary artifact | `job_photos.storage_path` + gallery strip |
 | Geotag + timestamp | `lat`, `lng`, `created_at` |
 | Caption | `caption` (optional) |
-| Before / after | `kind` + `pair_id`; `BeforeAfterPair` UI |
-| Activity feed | Timeline merges `job_photos` + `job_notes` |
+| Before / after | `kind` + `pair_id` on the photo rows. Job detail shows each photo once |
+| Field notes | `job_notes` listed as text under Notes. Photos are not repeated there |
 | Fast Capture | **Add photo** in the job header and under the title, and on each jobs-list card. The sheet takes a note, then camera or library (web falls back to a file picker). Upload saves the note on `job_photos.caption` |
-| Mark complete | On each photo in the gallery, timeline, and before/after pair. Opens the same upload sheet for a completion photo (`kind = after`, shared `pair_id`). **Upload and mark complete** sets `jobs.status` to `done`. Cancel does not change status |
+| Mark complete | On each photo. Opens the same upload sheet for a completion photo (`kind = after`, shared `pair_id`). **Upload and mark complete** sets `jobs.status` to `done`. Cancel does not change status |
 | Notes / comments | `job_notes` + add-note form |
 
 ## Rob checklist (Supabase dashboard)

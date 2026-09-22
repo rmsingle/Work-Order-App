@@ -87,6 +87,8 @@ if (finishButton.includes('Job Finished') || detail.includes('Job Finished')) {
   fail('user-facing Job Finished label must be renamed to Mark complete');
 }
 if (!detail.includes('Upload and mark complete')) fail('confirm button must say Upload and mark complete');
+if (detail.includes('>Timeline<')) fail('job detail must not render a Timeline section');
+if (detail.includes('buildTimeline')) fail('job detail must not rebuild a photo timeline');
 if (!detail.includes("status: 'done'")) fail('Mark complete must set jobs.status to done');
 if (!detail.includes("kind: 'before'") && !detail.includes('completionTarget')) {
   fail('Mark complete must link the completion photo to the original');

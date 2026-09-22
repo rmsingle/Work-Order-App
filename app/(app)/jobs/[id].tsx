@@ -15,7 +15,6 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
-import { BeforeAfterPairCard } from '@/components/BeforeAfterPair';
 import { JobFinishedButton } from '@/components/JobFinishedButton';
 import { StatusBadge } from '@/components/StatusBadge';
 import { useAuth } from '@/contexts/AuthContext';
@@ -25,7 +24,6 @@ import { captureFromCamera, newPairId, pickFromLibrary } from '@/lib/photos';
 import { captionFromNote, photoDisplayUri } from '@/lib/photo-storage';
 import { removeJobPhoto, signedUrlsForPaths, uploadJobPhoto } from '@/lib/storage';
 import { getSupabase } from '@/lib/supabase';
-import { buildTimeline } from '@/lib/timeline';
 import type { Job, JobNote, JobPhoto, PhotoKind } from '@/lib/types';
 
 function formatWhen(iso: string) {
@@ -191,8 +189,6 @@ export default function JobDetailScreen() {
         : undefined,
     });
   }, [navigation, job, capturing, sheetOpen, openAddPhoto]);
-
-  const timeline = useMemo(() => buildTimeline(photos, notes), [photos, notes]);
 
   const pairs = useMemo(() => {
     const map = new Map<string, { pair_id: string; before: JobPhoto | null; after: JobPhoto | null }>();
@@ -412,92 +408,49 @@ export default function JobDetailScreen() {
             </Text>
           </View>
         ) : (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.strip}>
-            {photos.map((p) => {
-              const uri = photoUri(p, signedByPath);
-              return (
-                <View key={p.id} style={styles.thumbWrap}>
-                  {uri ? (
-                    <Image source={{ uri }} style={styles.thumb} contentFit="cover" />
-                  ) : (
-                    <View style={[styles.thumb, styles.thumbPlaceholder]}>
-                      <Text style={styles.thumbPhText}>No URI</Text>
-                    </View>
-                  )}
-                  <Text style={styles.kindBadge}>{p.kind}</Text>
-                  {p.caption ? (
-                    <Text style={styles.thumbCaption} numberOfLines={2}>
-                      {p.caption}
-                    </Text>
-                  ) : null}
-                  <JobFinishedButton
-                    onPress={() => openJobFinished(p)}
-                    disabled={capturing || sheetOpen}
-                    hint="Marks this job complete"
-                  />
-                </View>
-              );
-            })}
-          </ScrollView>
-        )}
-
-        {pairs.length > 0 ? (
-          <>
-            <Text style={styles.section}>Before / After</Text>
-            {pairs.map((pair) => (
-              <BeforeAfterPairCard
-                key={pair.pair_id}
-                before={pair.before}
-                after={pair.after}
-                signedByPath={signedByPath}
-                onJobFinished={openJobFinished}
-                finishDisabled={capturing || sheetOpen}
-              />
-            ))}
-          </>
-        ) : null}
-
-        <Text style={styles.section}>Timeline</Text>
-        {timeline.length === 0 ? (
-          <Text style={styles.muted}>Photos and notes will appear here in order.</Text>
-        ) : (
-          timeline.map((item) => {
-            if (item.type === 'photo') {
-              const p = item.photo;
-              const uri = photoUri(p, signedByPath);
-              return (
-                <View key={`photo-${p.id}`} style={styles.timelineCard}>
-                  <Text style={styles.timelineLabel}>
-                    PHOTO · {p.kind.toUpperCase()} · {formatWhen(p.created_at)}
-                  </Text>
-                  {uri ? (
-                    <Image source={{ uri }} style={styles.timelineImage} contentFit="cover" />
-                  ) : null}
-                  {p.caption ? <Text style={styles.caption}>{p.caption}</Text> : null}
-                  <Text style={styles.meta}>
-                    {p.author?.full_name || 'Unknown'}
-                    {p.lat != null && p.lng != null
-                      ? ` · ${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}`
-                      : ' · GPS unavailable'}
-                  </Text>
-                  <JobFinishedButton
-                    onPress={() => openJobFinished(p)}
-                    disabled={capturing || sheetOpen}
-                    hint="Marks this job complete after a completion photo."
-                  />
-                </View>
-              );
-            }
-            const n = item.note;
+          photos.map((p) => {
+            const uri = photoUri(p, signedByPath);
             return (
-              <View key={`note-${n.id}`} style={styles.timelineCard}>
-                <Text style={styles.timelineLabel}>NOTE · {formatWhen(n.created_at)}</Text>
-                <Text style={styles.noteBody}>{n.body}</Text>
-                <Text style={styles.meta}>{n.author?.full_name || profile?.full_name || 'Unknown'}</Text>
+              <View key={p.id} style={styles.photoCard}>
+                <Text style={styles.photoLabel}>
+                  {p.kind.toUpperCase()} · {formatWhen(p.created_at)}
+                </Text>
+                {uri ? (
+                  <Image source={{ uri }} style={styles.photoImage} contentFit="cover" />
+                ) : (
+                  <View style={[styles.photoImage, styles.thumbPlaceholder]}>
+                    <Text style={styles.thumbPhText}>No URI</Text>
+                  </View>
+                )}
+                {p.caption ? <Text style={styles.caption}>{p.caption}</Text> : null}
+                <Text style={styles.meta}>
+                  {p.author?.full_name || 'Unknown'}
+                  {p.lat != null && p.lng != null
+                    ? ` · ${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}`
+                    : ' · GPS unavailable'}
+                </Text>
+                <JobFinishedButton
+                  onPress={() => openJobFinished(p)}
+                  disabled={capturing || sheetOpen}
+                  hint="Marks this job complete"
+                />
               </View>
             );
           })
         )}
+
+        {notes.length > 0 ? (
+          <>
+            <Text style={styles.section}>Notes</Text>
+            {notes.map((n) => (
+              <View key={n.id} style={styles.photoCard}>
+                <Text style={styles.photoLabel}>NOTE · {formatWhen(n.created_at)}</Text>
+                <Text style={styles.noteBody}>{n.body}</Text>
+                <Text style={styles.meta}>{n.author?.full_name || profile?.full_name || 'Unknown'}</Text>
+              </View>
+            ))}
+          </>
+        ) : null}
 
         <Text style={styles.section}>Add note</Text>
         <TextInput
@@ -740,20 +693,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   emptyPhotosText: { color: colors.muted, lineHeight: 20 },
-  strip: { marginBottom: spacing.sm },
-  thumbWrap: { marginRight: spacing.sm, width: 156 },
-  thumb: { width: 156, height: 120, borderRadius: 10, backgroundColor: colors.border },
-  thumbPlaceholder: { alignItems: 'center', justifyContent: 'center' },
-  thumbPhText: { fontSize: 11, color: colors.muted },
-  kindBadge: {
-    marginTop: 4,
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.navy,
-    textTransform: 'uppercase',
-  },
-  thumbCaption: { marginTop: 2, fontSize: 11, color: colors.muted },
-  timelineCard: {
+  photoCard: {
     backgroundColor: colors.white,
     borderRadius: 12,
     padding: spacing.md,
@@ -761,8 +701,10 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     marginBottom: spacing.sm,
   },
-  timelineLabel: { fontSize: 11, fontWeight: '800', color: colors.gold, marginBottom: 6 },
-  timelineImage: { width: '100%', height: 200, borderRadius: 10, backgroundColor: colors.border },
+  photoLabel: { fontSize: 11, fontWeight: '800', color: colors.gold, marginBottom: 6 },
+  photoImage: { width: '100%', height: 220, borderRadius: 10, backgroundColor: colors.border },
+  thumbPlaceholder: { alignItems: 'center', justifyContent: 'center' },
+  thumbPhText: { fontSize: 11, color: colors.muted },
   caption: { marginTop: 8, color: colors.navy },
   noteBody: { color: colors.navy, fontSize: 15, lineHeight: 22 },
   muted: { color: colors.muted },
