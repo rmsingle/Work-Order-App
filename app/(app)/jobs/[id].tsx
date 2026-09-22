@@ -16,9 +16,11 @@ import {
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { BeforeAfterPairCard } from '@/components/BeforeAfterPair';
+import { JobFinishedButton } from '@/components/JobFinishedButton';
 import { StatusBadge } from '@/components/StatusBadge';
 import { useAuth } from '@/contexts/AuthContext';
 import { colors, spacing } from '@/constants/theme';
+import { completionTarget, type FinishTarget } from '@/lib/finish-job';
 import { captureFromCamera, newPairId, pickFromLibrary } from '@/lib/photos';
 import { captionFromNote, photoDisplayUri } from '@/lib/photo-storage';
 import { removeJobPhoto, signedUrlsForPaths, uploadJobPhoto } from '@/lib/storage';
@@ -74,6 +76,7 @@ export default function JobDetailScreen() {
   const [photoNote, setPhotoNote] = useState('');
   const [pendingUpload, setPendingUpload] = useState<PendingUpload | null>(null);
   const [pendingPairId, setPendingPairId] = useState<string | null>(null);
+  const [finishTarget, setFinishTarget] = useState<FinishTarget | null>(null);
   const handledAddPhoto = useRef(false);
 
   const load = useCallback(async () => {
@@ -135,6 +138,16 @@ export default function JobDetailScreen() {
   }, [load]);
 
   const openAddPhoto = useCallback(() => {
+    setFinishTarget(null);
+    setPhotoNote('');
+    setPendingUpload(null);
+    setSheetStep('source');
+    setSheetOpen(true);
+  }, []);
+
+  const openJobFinished = useCallback((photo: JobPhoto) => {
+    const pairId = photo.pair_id ?? newPairId();
+    setFinishTarget(completionTarget(photo, pairId));
     setPhotoNote('');
     setPendingUpload(null);
     setSheetStep('source');
@@ -146,6 +159,7 @@ export default function JobDetailScreen() {
     setSheetOpen(false);
     setSheetStep('source');
     setPendingUpload(null);
+    setFinishTarget(null);
   }, [capturing]);
 
   useEffect(() => {
@@ -185,8 +199,9 @@ export default function JobDetailScreen() {
     for (const p of photos) {
       if (!p.pair_id || (p.kind !== 'before' && p.kind !== 'after')) continue;
       const entry = map.get(p.pair_id) ?? { pair_id: p.pair_id, before: null, after: null };
-      if (p.kind === 'before') entry.before = p;
-      if (p.kind === 'after') entry.after = p;
+      // Photos are newest first, so the first before/after in a pair is the latest one.
+      if (p.kind === 'before' && !entry.before) entry.before = p;
+      if (p.kind === 'after' && !entry.after) entry.after = p;
       map.set(p.pair_id, entry);
     }
     return Array.from(map.values()).filter((x) => x.before || x.after);
@@ -200,6 +215,7 @@ export default function JobDetailScreen() {
     kind: PhotoKind;
     pairId: string | null;
     caption: string | null;
+    finish: FinishTarget | null;
   }) {
     if (!id || !user) return;
     const storagePath = await uploadJobPhoto({
@@ -223,7 +239,28 @@ export default function JobDetailScreen() {
       await removeJobPhoto(storagePath).catch(() => undefined);
       throw insErr;
     }
-    await getSupabase().from('jobs').update({ updated_at: new Date().toISOString() }).eq('id', id);
+    if (opts.finish?.link) {
+      const { error: linkErr } = await getSupabase()
+        .from('job_photos')
+        .update(opts.finish.link)
+        .eq('id', opts.finish.photoId);
+      if (linkErr) {
+        await load();
+        throw new Error(`Completion photo saved, but it could not be linked. ${linkErr.message}`);
+      }
+    }
+    if (opts.finish) {
+      const { error: doneErr } = await getSupabase()
+        .from('jobs')
+        .update({ status: 'done', updated_at: new Date().toISOString() })
+        .eq('id', id);
+      if (doneErr) {
+        await load();
+        throw new Error(`Completion photo saved, but the job could not be marked done. ${doneErr.message}`);
+      }
+    } else {
+      await getSupabase().from('jobs').update({ updated_at: new Date().toISOString() }).eq('id', id);
+    }
     await load();
   }
 
@@ -271,6 +308,7 @@ export default function JobDetailScreen() {
         kind: pendingUpload.kind,
         pairId: pendingUpload.pairId,
         caption: photoNote,
+        finish: finishTarget,
       });
       if (pendingUpload.kind === 'before' && pendingUpload.pairId) {
         setPendingPairId(pendingUpload.pairId);
@@ -278,10 +316,19 @@ export default function JobDetailScreen() {
       if (pendingUpload.kind === 'after') setPendingPairId(null);
       setPendingUpload(null);
       setPhotoNote('');
+      setFinishTarget(null);
       setSheetStep('source');
       setSheetOpen(false);
     } catch (e) {
-      Alert.alert('Upload failed', e instanceof Error ? e.message : 'Unknown error');
+      const message = e instanceof Error ? e.message : 'Unknown error';
+      Alert.alert('Upload failed', message);
+      if (message.startsWith('Completion photo saved')) {
+        setPendingUpload(null);
+        setPhotoNote('');
+        setFinishTarget(null);
+        setSheetStep('source');
+        setSheetOpen(false);
+      }
     } finally {
       setCapturing(false);
     }
@@ -383,6 +430,11 @@ export default function JobDetailScreen() {
                       {p.caption}
                     </Text>
                   ) : null}
+                  <JobFinishedButton
+                    onPress={() => openJobFinished(p)}
+                    disabled={capturing || sheetOpen}
+                    hint="Closes this job"
+                  />
                 </View>
               );
             })}
@@ -398,6 +450,8 @@ export default function JobDetailScreen() {
                 before={pair.before}
                 after={pair.after}
                 signedByPath={signedByPath}
+                onJobFinished={openJobFinished}
+                finishDisabled={capturing || sheetOpen}
               />
             ))}
           </>
@@ -426,6 +480,11 @@ export default function JobDetailScreen() {
                       ? ` · ${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}`
                       : ' · GPS unavailable'}
                   </Text>
+                  <JobFinishedButton
+                    onPress={() => openJobFinished(p)}
+                    disabled={capturing || sheetOpen}
+                    hint="Closes this job after a completion photo."
+                  />
                 </View>
               );
             }
@@ -480,9 +539,13 @@ export default function JobDetailScreen() {
               >
                 {sheetStep === 'confirm' && pendingUpload ? (
                   <>
-                    <Text style={styles.sheetTitle}>Upload photo</Text>
+                    <Text style={styles.sheetTitle}>
+                      {finishTarget ? 'Upload completion photo' : 'Upload photo'}
+                    </Text>
                     <Text style={styles.sheetSub}>
-                      Add or edit the note, then upload. It is saved on this photo as the caption.
+                      {finishTarget
+                        ? 'Add or edit the note, then upload. This photo is the completion shot, and the job is marked Done.'
+                        : 'Add or edit the note, then upload. It is saved on this photo as the caption.'}
                     </Text>
                     <Image
                       source={{ uri: pendingUpload.localUri }}
@@ -492,7 +555,7 @@ export default function JobDetailScreen() {
                     <Text style={styles.fieldLabel}>Note</Text>
                     <TextInput
                       style={styles.sheetInput}
-                      placeholder="Note for this photo…"
+                      placeholder={finishTarget ? 'Note for the completion photo…' : 'Note for this photo…'}
                       placeholderTextColor={colors.muted}
                       value={photoNote}
                       onChangeText={setPhotoNote}
@@ -507,10 +570,57 @@ export default function JobDetailScreen() {
                       {capturing ? (
                         <ActivityIndicator color={colors.navy} />
                       ) : (
-                        <Text style={styles.uploadBtnText}>Upload photo</Text>
+                        <Text style={styles.uploadBtnText}>
+                          {finishTarget ? 'Upload and finish job' : 'Upload photo'}
+                        </Text>
                       )}
                     </Pressable>
                     <Pressable onPress={closeSheet} style={styles.sheetCancel} disabled={capturing}>
+                      <Text style={styles.sheetCancelText}>Cancel</Text>
+                    </Pressable>
+                  </>
+                ) : finishTarget ? (
+                  <>
+                    <Text style={styles.sheetTitle}>Job Finished</Text>
+                    <Text style={styles.sheetSub}>
+                      Take or upload a completion photo of the finished work. A note is optional.
+                      This job is marked Done when the photo uploads. Cancel leaves the job unchanged.
+                      {web ? ' On web, choose an image file if the camera is unavailable.' : ''}
+                    </Text>
+                    <Text style={styles.fieldLabel}>Note</Text>
+                    <TextInput
+                      style={styles.sheetInput}
+                      placeholder="Note for the completion photo…"
+                      placeholderTextColor={colors.muted}
+                      value={photoNote}
+                      onChangeText={setPhotoNote}
+                      multiline
+                    />
+                    {web ? (
+                      <Pressable
+                        style={styles.sheetBtn}
+                        onPress={() => runCapture('after', finishTarget.pairId, 'library')}
+                      >
+                        <Text style={styles.sheetBtnText}>Choose completion photo</Text>
+                      </Pressable>
+                    ) : null}
+                    <Pressable
+                      style={styles.sheetBtn}
+                      onPress={() => runCapture('after', finishTarget.pairId, 'camera')}
+                    >
+                      <Text style={styles.sheetBtnText}>
+                        {web ? 'Camera or choose file' : 'Camera · completion'}
+                      </Text>
+                    </Pressable>
+                    {web ? null : (
+                      <Pressable
+                        style={styles.sheetBtn}
+                        onPress={() => runCapture('after', finishTarget.pairId, 'library')}
+                      >
+                        <Text style={styles.sheetBtnText}>Photo library · completion</Text>
+                      </Pressable>
+                    )}
+                    <Pressable onPress={closeSheet} style={styles.sheetCancel}>
                       <Text style={styles.sheetCancelText}>Cancel</Text>
                     </Pressable>
                   </>
@@ -631,8 +741,8 @@ const styles = StyleSheet.create({
   },
   emptyPhotosText: { color: colors.muted, lineHeight: 20 },
   strip: { marginBottom: spacing.sm },
-  thumbWrap: { marginRight: spacing.sm, width: 110 },
-  thumb: { width: 110, height: 110, borderRadius: 10, backgroundColor: colors.border },
+  thumbWrap: { marginRight: spacing.sm, width: 156 },
+  thumb: { width: 156, height: 120, borderRadius: 10, backgroundColor: colors.border },
   thumbPlaceholder: { alignItems: 'center', justifyContent: 'center' },
   thumbPhText: { fontSize: 11, color: colors.muted },
   kindBadge: {

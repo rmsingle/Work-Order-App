@@ -22,6 +22,7 @@ CompanyCam-style MVP: **photos are the primary artifact** on each job (GPS + tim
 | Fast Capture (camera / library) | Working — uploads to Storage and sets `storage_path` |
 | GPS lat/lng on photos | Working when permission granted; null if denied |
 | Before / after pairs (`pair_id`, side-by-side UI) | Working |
+| Job Finished on each photo | Working — completion photo, then `jobs.status = done` |
 | Timeline (photos + notes, newest first) | Working |
 | Add note (author from profile) | Working |
 | Configure Supabase screen when env missing | Working |
@@ -70,6 +71,7 @@ README.md
 | Before / after | `kind` + `pair_id`; `BeforeAfterPair` UI |
 | Activity feed | Timeline merges `job_photos` + `job_notes` |
 | Fast Capture | **Add photo** in the job header and under the title, and on each jobs-list card. The sheet takes a note, then camera or library (web falls back to a file picker). Upload saves the note on `job_photos.caption` |
+| Job Finished | On each photo in the gallery, timeline, and before/after pair. Opens the same upload sheet for a completion photo (`kind = after`, shared `pair_id`). **Upload and finish job** sets `jobs.status` to `done`. Cancel does not change status |
 | Notes / comments | `job_notes` + add-note form |
 
 ## Rob checklist (Supabase dashboard)

@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
+import { JobFinishedButton } from '@/components/JobFinishedButton';
 import { colors, spacing } from '@/constants/theme';
 import { photoDisplayUri } from '@/lib/photo-storage';
 import type { JobPhoto } from '@/lib/types';
@@ -15,11 +16,15 @@ function Slot({
   photo,
   accent,
   signedByPath,
+  onJobFinished,
+  finishDisabled,
 }: {
   label: string;
   photo: JobPhoto | null;
   accent: string;
   signedByPath: Readonly<Record<string, string>>;
+  onJobFinished?: (photo: JobPhoto) => void;
+  finishDisabled?: boolean;
 }) {
   const uri = uriFor(photo, signedByPath);
   return (
@@ -33,6 +38,13 @@ function Slot({
         </View>
       )}
       {photo?.caption ? <Text style={styles.caption} numberOfLines={2}>{photo.caption}</Text> : null}
+      {photo && onJobFinished ? (
+        <JobFinishedButton
+          onPress={() => onJobFinished(photo)}
+          disabled={finishDisabled}
+          hint="Closes this job"
+        />
+      ) : null}
     </View>
   );
 }
@@ -41,17 +53,35 @@ export function BeforeAfterPairCard({
   before,
   after,
   signedByPath,
+  onJobFinished,
+  finishDisabled,
 }: {
   before: JobPhoto | null;
   after: JobPhoto | null;
   signedByPath: Readonly<Record<string, string>>;
+  onJobFinished?: (photo: JobPhoto) => void;
+  finishDisabled?: boolean;
 }) {
   return (
     <View style={styles.card}>
       <Text style={styles.title}>Before / After</Text>
       <View style={styles.row}>
-        <Slot label="Before" photo={before} accent={colors.before} signedByPath={signedByPath} />
-        <Slot label="After" photo={after} accent={colors.after} signedByPath={signedByPath} />
+        <Slot
+          label="Before"
+          photo={before}
+          accent={colors.before}
+          signedByPath={signedByPath}
+          onJobFinished={onJobFinished}
+          finishDisabled={finishDisabled}
+        />
+        <Slot
+          label="After"
+          photo={after}
+          accent={colors.after}
+          signedByPath={signedByPath}
+          onJobFinished={onJobFinished}
+          finishDisabled={finishDisabled}
+        />
       </View>
     </View>
   );

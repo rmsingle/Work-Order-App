@@ -81,6 +81,11 @@ if (!detail.includes('Add photo')) fail('job detail must show an Add photo contr
 if (/\bfab:\s*\{/.test(detail)) fail('capture must not stay a bottom-right FAB');
 if (!list.includes('Add photo')) fail('jobs list must show an Add photo control on each job');
 if (!list.includes('addPhoto=1')) fail('jobs list Add photo must open the job upload flow');
+if (!detail.includes('Job Finished')) fail('job detail must show Job Finished on photos');
+if (!detail.includes("status: 'done'")) fail('Job Finished must set jobs.status to done');
+if (!detail.includes("kind: 'before'") && !detail.includes('completionTarget')) {
+  fail('Job Finished must link the completion photo to the original');
+}
 if (!detail.includes('storage_path: storagePath')) {
   fail('job_photos insert must persist the uploaded storage path');
 }

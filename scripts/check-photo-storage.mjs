@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { completionTarget } from '../lib/finish-job.ts';
 import {
   buildObjectPath,
   captionFromNote,
@@ -36,5 +37,17 @@ assert.equal(captionFromNote('  west unit filter  '), 'west unit filter');
 assert.equal(captionFromNote('   '), null);
 assert.equal(captionFromNote(null), null);
 assert.equal(captionFromNote(undefined), null);
+
+const general = completionTarget({ id: 'photo-1', kind: 'general', pair_id: null }, 'pair-1');
+assert.equal(general.photoId, 'photo-1');
+assert.equal(general.pairId, 'pair-1');
+assert.deepEqual(general.link, { pair_id: 'pair-1', kind: 'before' });
+
+const before = completionTarget({ id: 'photo-2', kind: 'before', pair_id: 'pair-2' }, 'pair-2');
+assert.equal(before.link, null);
+
+const after = completionTarget({ id: 'photo-3', kind: 'after', pair_id: 'pair-2' }, 'pair-2');
+assert.equal(after.link, null);
+assert.equal(after.pairId, 'pair-2');
 
 console.log('photo storage display checks passed');
