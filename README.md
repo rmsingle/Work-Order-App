@@ -23,6 +23,7 @@ CompanyCam-style MVP: **photos are the primary artifact** on each job (GPS + tim
 | GPS lat/lng on photos | Working when permission granted; null if denied |
 | Before / after pairs (`pair_id` on the photo rows) | Working — one row per item; completion photo fills the right column |
 | Mark complete on each original photo | Working — button sits in the right column until the completion photo replaces it, then `jobs.status = done` |
+| Archive job | Working — job detail sets `jobs.archived_at`; the Jobs list hides those rows |
 | Field notes (`job_notes`, text only) | Working |
 | Add note (author from profile) | Working |
 | Configure Supabase screen when env missing | Working |
@@ -42,7 +43,7 @@ app/
   (app)/_layout.tsx         # auth gate + stack
   (app)/jobs/index.tsx      # jobs dashboard + New Job
   (app)/jobs/[id].tsx       # photo-first detail + Add photo at the top
-components/                 # ConfigureSupabase, StatusBadge, BeforeAfterPair
+components/                 # ConfigureSupabase, StatusBadge, BeforeAfterPair, ArchiveJobButton
 contexts/AuthContext.tsx
 constants/theme.ts          # navy / gold / white
 lib/
@@ -52,10 +53,12 @@ lib/
   types.ts
   photos.ts                 # camera, library, GPS, pair ids
   phoneAuth.ts              # US phone → `{digits}@psg-jobs.app` login email
+  archive-job.ts            # confirm before archiving a job
   timeline.ts
 supabase/migrations/
   001_init.sql
   002_storage_job_photos.sql
+  003_jobs_archived_at.sql
 supabase/002_storage_policies_for_dashboard.txt
 .env.example
 vercel.json               # Vercel install, web export, dist, SPA rewrite
@@ -66,7 +69,7 @@ README.md
 
 | Pattern | Implementation |
 | --- | --- |
-| Project / job site | `jobs` + Jobs list + New Job + Job detail header |
+| Project / job site | `jobs` + Jobs list + New Job + Job detail header. **Archive job** sets `archived_at` and the list hides that job |
 | Photo as primary artifact | `job_photos.storage_path` + two-column rows (`contentFit="contain"`) |
 | Geotag + timestamp | `lat`, `lng`, `created_at` |
 | Caption | `caption` (optional) |
@@ -100,9 +103,10 @@ Do these clicks once. The repo cannot create the project, turn on providers, or 
 4. **Enable Email.** **Authentication → Providers** (sometimes **Sign In / Providers**) → **Email** → turn it on → Save.
    - If **Confirm email** stays on, sign-up will not open the jobs list until the inbox link is clicked. Turn **Confirm email** off when you want a session immediately after sign-up.
 5. **Create employee logins in Supabase.** **Authentication → Users → Add user.** The email is the 10-digit US phone plus `@psg-jobs.app` (example: `3365462585@psg-jobs.app`). Set a password. Employees sign in on the app with that phone number and password. The app calls `signInWithPassword` on the synthetic email. They do not create their own accounts. SMS OTP is not used for this login.
-6. **Run the SQL, in order.** **SQL Editor** → New query → paste `supabase/migrations/001_init.sql` → **Run**. Then a new query → paste `supabase/migrations/002_storage_job_photos.sql` → **Run**.
+6. **Run the SQL, in order.** **SQL Editor** → New query → paste `supabase/migrations/001_init.sql` → **Run**. Then a new query → paste `supabase/migrations/002_storage_job_photos.sql` → **Run**. Then paste `supabase/migrations/003_jobs_archived_at.sql` → **Run**.
    - `001` creates profiles, jobs, notes, photos, RLS, the signup trigger, and three sample Winston-Salem jobs.
    - `002` creates the **private** `job-photos` bucket only. It does not create storage policies. The SQL Editor cannot `ALTER` or `CREATE POLICY` on `storage.objects` (error 42501; that table is owned by `supabase_storage_admin`). Re-run `002` if you already applied an older `001` that left the bucket commented out.
+   - `003` adds nullable `jobs.archived_at`. The Jobs list only shows rows where that column is null. If you already ran `001`, run `003` once so **Archive job** can save.
 7. **Add the four storage policies.** After `002`, open **Dashboard → Storage → Policies** for the `job-photos` bucket and add these four policies. Role is **authenticated**. Each expression is `bucket_id = 'job-photos'`:
    - `job_photos_storage_select` — SELECT, USING
    - `job_photos_storage_insert` — INSERT, WITH CHECK
@@ -184,7 +188,7 @@ Email confirmation and auth redirects use that list. Without it, a link in an em
 ## Schema (summary)
 
 - **profiles** — `id` = `auth.users.id`, `full_name`, `phone`, `role` (`owner_admin` \| `employee` \| `customer`)
-- **jobs** — title, property_address, status, created_by, timestamps. The app selects jobs, inserts a new job (`title`, `property_address`, `status`, `created_by`), and updates `updated_at`
+- **jobs** — title, property_address, status (`open` \| `in_progress` \| `done` \| `cancelled`), created_by, timestamps, `archived_at` (null = on the dashboard). The app selects active jobs (`archived_at` is null), inserts a new job (`title`, `property_address`, `status`, `created_by`), updates `updated_at`, and archives by setting `archived_at`
 - **job_notes** — job_id, author_id, body, created_at. The app selects and inserts notes. It does not edit or delete them
 - **job_photos** — job_id, storage_path (bucket object key), local_uri (legacy only), lat, lng, caption, kind (`before`|`after`|`general`), pair_id, created_by, created_at. Capture inserts `storage_path` and leaves `local_uri` null
 - **storage** — private bucket `job-photos` (`002_storage_job_photos.sql`). After `002`, add the four `job_photos_storage_*` policies in **Dashboard → Storage → Policies** (authenticated select/insert/update/delete on that bucket only). Display uses 1-hour signed URLs

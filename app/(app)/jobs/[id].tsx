@@ -16,10 +16,12 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
+import { ArchiveJobButton } from '@/components/ArchiveJobButton';
 import { BeforeAfterPairCard } from '@/components/BeforeAfterPair';
 import { StatusBadge } from '@/components/StatusBadge';
 import { useAuth } from '@/contexts/AuthContext';
 import { colors, spacing } from '@/constants/theme';
+import { confirmArchiveJob } from '@/lib/archive-job';
 import { completionTarget, type FinishTarget } from '@/lib/finish-job';
 import { captureFromCamera, newPairId, pickFromLibrary } from '@/lib/photos';
 import { captionFromNote } from '@/lib/photo-storage';
@@ -76,6 +78,7 @@ export default function JobDetailScreen() {
   const [pendingUpload, setPendingUpload] = useState<PendingUpload | null>(null);
   const [pendingPairId, setPendingPairId] = useState<string | null>(null);
   const [finishTarget, setFinishTarget] = useState<FinishTarget | null>(null);
+  const [archiving, setArchiving] = useState(false);
   const handledAddPhoto = useRef(false);
 
   const load = useCallback(async () => {
@@ -395,6 +398,24 @@ export default function JobDetailScreen() {
     }
   }
 
+  async function archiveJob() {
+    if (!id || !job || archiving) return;
+    const confirmed = await confirmArchiveJob(job.title);
+    if (!confirmed) return;
+    setArchiving(true);
+    try {
+      const { error: upErr } = await getSupabase()
+        .from('jobs')
+        .update({ archived_at: new Date().toISOString() })
+        .eq('id', id);
+      if (upErr) throw upErr;
+      router.dismissTo('/(app)/jobs');
+    } catch (e) {
+      Alert.alert('Could not archive', e instanceof Error ? e.message : 'Unknown error');
+      setArchiving(false);
+    }
+  }
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -467,6 +488,11 @@ export default function JobDetailScreen() {
               <Text style={styles.addPhotoBtnText}>Add photo</Text>
             )}
           </Pressable>
+          <ArchiveJobButton
+            onPress={archiveJob}
+            disabled={capturing || sheetOpen}
+            busy={archiving}
+          />
         </View>
 
         <Text style={styles.section}>Photos ({photos.length})</Text>

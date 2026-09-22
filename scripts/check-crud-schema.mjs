@@ -4,11 +4,13 @@ import path from 'node:path';
 const root = path.resolve(import.meta.dirname, '..');
 const sql = fs.readFileSync(path.join(root, 'supabase/migrations/001_init.sql'), 'utf8');
 const storageSql = fs.readFileSync(path.join(root, 'supabase/migrations/002_storage_job_photos.sql'), 'utf8');
+const archiveSql = fs.readFileSync(path.join(root, 'supabase/migrations/003_jobs_archived_at.sql'), 'utf8');
 const detail = fs.readFileSync(path.join(root, 'app/(app)/jobs/[id].tsx'), 'utf8');
 const login = fs.readFileSync(path.join(root, 'app/(auth)/login.tsx'), 'utf8');
 const phoneAuth = fs.readFileSync(path.join(root, 'lib/phoneAuth.ts'), 'utf8');
 const pairCard = fs.readFileSync(path.join(root, 'components/BeforeAfterPair.tsx'), 'utf8');
 const finishButton = fs.readFileSync(path.join(root, 'components/JobFinishedButton.tsx'), 'utf8');
+const archiveButton = fs.readFileSync(path.join(root, 'components/ArchiveJobButton.tsx'), 'utf8');
 const list = fs.readFileSync(path.join(root, 'app/(app)/jobs/index.tsx'), 'utf8');
 const auth = fs.readFileSync(path.join(root, 'contexts/AuthContext.tsx'), 'utf8');
 
@@ -56,7 +58,17 @@ function insertColumns(source, table) {
   return [...match[1].matchAll(/^\s*([a-z_]+)\s*(?:,|:)/gm)].map((found) => found[1]);
 }
 
-const jobs = tableColumns(sql, 'jobs');
+function addedColumns(source, table) {
+  const columns = [];
+  const re = new RegExp(
+    `alter table public\\.${table}[\\s\\S]*?add column if not exists ([a-z_]+)`,
+    'gi'
+  );
+  for (const match of source.matchAll(re)) columns.push(match[1]);
+  return columns;
+}
+
+const jobs = [...tableColumns(sql, 'jobs'), ...addedColumns(archiveSql, 'jobs')];
 const notes = tableColumns(sql, 'job_notes');
 const photos = tableColumns(sql, 'job_photos');
 const profiles = tableColumns(sql, 'profiles');
@@ -102,6 +114,20 @@ if (/\bfab:\s*\{/.test(detail)) fail('capture must not stay a bottom-right FAB')
 if (list.includes('Add photo') || list.includes('addPhoto=1') || list.includes('cardPhotoBtn')) {
   fail('jobs list must not show Add photo; open the job first');
 }
+if (!list.includes(".is('archived_at', null)")) {
+  fail('jobs list must hide archived jobs');
+}
+if (!list.includes('Archived jobs are hidden')) {
+  fail('jobs list must note that archived jobs are hidden');
+}
+if (!archiveSql.includes('archived_at timestamptz')) {
+  fail('003 must add nullable archived_at on jobs');
+}
+if (!jobs.includes('archived_at')) fail('archived_at must be a jobs column');
+if (!detail.includes('archived_at:') || !detail.includes('confirmArchiveJob') || !detail.includes('ArchiveJobButton')) {
+  fail('job detail must confirm, then set archived_at');
+}
+if (!archiveButton.includes('Archive job')) fail('archive control must be labeled Archive job');
 if (!list.includes("headerTitleAlign: 'center'")) fail('Jobs title must be centered in the header');
 const newJobBtn = list.match(/newJobBtn:\s*\{([^}]+)\}/);
 if (!newJobBtn || !newJobBtn[1].includes('backgroundColor: colors.gold') || !newJobBtn[1].includes('paddingVertical: 14')) {

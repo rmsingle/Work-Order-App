@@ -115,6 +115,7 @@ export default function JobsListScreen() {
       const { data, error: qErr } = await getSupabase()
         .from('jobs')
         .select('id, title, property_address, status, created_by, created_at, updated_at')
+        .is('archived_at', null)
         .order('updated_at', { ascending: false });
       if (qErr) throw qErr;
       setJobs((data as Job[]) ?? []);
@@ -290,7 +291,9 @@ export default function JobsListScreen() {
         <Text style={styles.helloText}>
           {profile?.full_name ? `Hi, ${profile.full_name}` : 'PSG jobs'}
         </Text>
-        <Text style={styles.helloSub}>Open a job to add photos and notes.</Text>
+        <Text style={styles.helloSub}>
+          Open a job to add photos and notes. Archived jobs are hidden.
+        </Text>
       </View>
 
       {error ? (
