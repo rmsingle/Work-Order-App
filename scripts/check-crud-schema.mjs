@@ -115,6 +115,10 @@ if (!detail.includes('https://www.google.com/maps/search/?api=1&query=')) {
   fail('maps must query Google Maps with the property address');
 }
 if (!detail.includes('Linking.openURL')) fail('maps must open with Linking.openURL');
+const addressRow = detail.match(/addressRow:\s*\{([^}]+)\}/);
+if (!addressRow || !addressRow[1].includes("flexDirection: 'row'")) {
+  fail('address and Open in Google Maps must share one row');
+}
 if (!detail.includes("dismissTo('/(app)/jobs')")) fail('Back must return to the jobs list');
 if (detail.includes('>Timeline<')) fail('job detail must not render a Timeline section');
 if (!detail.includes('BeforeAfterPairCard')) fail('each work item must render as a BeforeAfterPair row');

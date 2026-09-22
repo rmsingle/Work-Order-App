@@ -437,17 +437,20 @@ export default function JobDetailScreen() {
             <Text style={styles.title}>{job.title}</Text>
             <StatusBadge status={job.status} />
           </View>
-          <Text style={styles.address}>{address || 'No address'}</Text>
-          {address ? (
-            <Pressable
-              style={styles.mapsBtn}
-              onPress={openInMaps}
-              accessibilityRole="button"
-              accessibilityLabel="Open in Google Maps"
-            >
-              <Text style={styles.mapsBtnText}>Open in Google Maps</Text>
-            </Pressable>
-          ) : (
+          <View style={styles.addressRow}>
+            <Text style={styles.address}>{address || 'No address'}</Text>
+            {address ? (
+              <Pressable
+                style={styles.mapsBtn}
+                onPress={openInMaps}
+                accessibilityRole="button"
+                accessibilityLabel="Open in Google Maps"
+              >
+                <Text style={styles.mapsBtnText}>Open in Google Maps</Text>
+              </Pressable>
+            ) : null}
+          </View>
+          {address ? null : (
             <Text style={styles.mapsHint}>Add an address to open this job in Google Maps.</Text>
           )}
           <Text style={styles.meta}>Updated {formatWhen(job.updated_at)}</Text>
@@ -714,10 +717,15 @@ const styles = StyleSheet.create({
   },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.sm },
   title: { flex: 1, fontSize: 20, fontWeight: '800', color: colors.navy },
-  address: { marginTop: spacing.sm, color: colors.navyMid },
-  mapsBtn: {
-    alignSelf: 'flex-start',
+  addressRow: {
     marginTop: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  address: { flex: 1, color: colors.navyMid },
+  mapsBtn: {
+    flexShrink: 0,
     backgroundColor: colors.navy,
     borderRadius: 10,
     paddingVertical: 8,
