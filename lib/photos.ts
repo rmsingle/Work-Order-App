@@ -1,5 +1,6 @@
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
+import { Platform } from 'react-native';
 import { mimeFromUri } from './photo-storage';
 import type { PhotoKind } from './types';
 
@@ -44,22 +45,38 @@ async function readGps(): Promise<{ lat: number | null; lng: number | null }> {
   }
 }
 
-/** Fast Capture — camera first (CompanyCam-style). Falls back gracefully if cancelled. */
-export async function captureFromCamera(opts?: {
+type CaptureOpts = {
   kind?: PhotoKind;
   pairId?: string | null;
   caption?: string | null;
-}): Promise<CapturedPhoto | null> {
-  const cam = await ImagePicker.requestCameraPermissionsAsync();
-  if (!cam.granted) {
-    throw new Error('Camera permission is required for Fast Capture.');
+};
+
+const pickerOptions: ImagePicker.ImagePickerOptions = {
+  mediaTypes: ['images'],
+  quality: 0.85,
+  exif: true,
+};
+
+async function launchCapture(
+  source: 'camera' | 'library',
+  opts?: CaptureOpts
+): Promise<CapturedPhoto | null> {
+  if (source === 'camera') {
+    const cam = await ImagePicker.requestCameraPermissionsAsync();
+    if (!cam.granted) {
+      throw new Error('Camera permission is required to add a photo.');
+    }
+  } else {
+    const lib = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!lib.granted) {
+      throw new Error('Photo library permission is required.');
+    }
   }
 
-  const result = await ImagePicker.launchCameraAsync({
-    mediaTypes: ['images'],
-    quality: 0.85,
-    exif: true,
-  });
+  const result =
+    source === 'camera'
+      ? await ImagePicker.launchCameraAsync(pickerOptions)
+      : await ImagePicker.launchImageLibraryAsync(pickerOptions);
 
   if (result.canceled || !result.assets?.[0]) return null;
 
@@ -67,27 +84,30 @@ export async function captureFromCamera(opts?: {
   return capturedFromAsset(result.assets[0], opts, gps);
 }
 
-/** Library picker for attaching existing site photos. */
-export async function pickFromLibrary(opts?: {
-  kind?: PhotoKind;
-  pairId?: string | null;
-  caption?: string | null;
-}): Promise<CapturedPhoto | null> {
-  const lib = await ImagePicker.requestMediaLibraryPermissionsAsync();
-  if (!lib.granted) {
-    throw new Error('Photo library permission is required.');
+/**
+ * Fast Capture — camera first.
+ * On web, camera launch uses a file input and can fail in desktop browsers.
+ * A cancel stays a cancel. A thrown camera error falls back to the image file picker.
+ */
+export async function captureFromCamera(opts?: CaptureOpts): Promise<CapturedPhoto | null> {
+  try {
+    return await launchCapture('camera', opts);
+  } catch (error) {
+    if (Platform.OS !== 'web') throw error;
+    try {
+      return await launchCapture('library', opts);
+    } catch (fallbackError) {
+      const first = error instanceof Error ? error.message : 'Camera unavailable on web.';
+      const second =
+        fallbackError instanceof Error ? fallbackError.message : 'File picker unavailable.';
+      throw new Error(`${first} ${second}`);
+    }
   }
+}
 
-  const result = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ['images'],
-    quality: 0.85,
-    exif: true,
-  });
-
-  if (result.canceled || !result.assets?.[0]) return null;
-
-  const gps = await readGps();
-  return capturedFromAsset(result.assets[0], opts, gps);
+/** Library picker for attaching existing site photos. On web this is the file dialog. */
+export async function pickFromLibrary(opts?: CaptureOpts): Promise<CapturedPhoto | null> {
+  return launchCapture('library', opts);
 }
 
 /** Group before/after photos that share a pair_id. */

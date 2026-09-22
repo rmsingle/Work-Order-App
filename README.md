@@ -40,7 +40,7 @@ app/
   (auth)/login.tsx          # email or phone
   (app)/_layout.tsx         # auth gate + stack
   (app)/jobs/index.tsx      # jobs dashboard + New Job
-  (app)/jobs/[id].tsx       # photo-first detail + Capture FAB
+  (app)/jobs/[id].tsx       # photo-first detail + Add photo at the top
 components/                 # ConfigureSupabase, StatusBadge, BeforeAfterPair
 contexts/AuthContext.tsx
 constants/theme.ts          # navy / gold / white
@@ -69,7 +69,7 @@ README.md
 | Caption | `caption` (optional) |
 | Before / after | `kind` + `pair_id`; `BeforeAfterPair` UI |
 | Activity feed | Timeline merges `job_photos` + `job_notes` |
-| Fast Capture | Gold FAB → camera/library sheet → Storage upload |
+| Fast Capture | **Add photo** in the job header and under the title, and on each jobs-list card. The sheet takes a note, then camera or library (web falls back to a file picker). Upload saves the note on `job_photos.caption` |
 | Notes / comments | `job_notes` + add-note form |
 
 ## Rob checklist (Supabase dashboard)
@@ -114,7 +114,7 @@ Do these clicks once. The repo cannot create the project, turn on providers, or 
    npx expo start
    ```
 
-Sign up with email (or phone, after the SMS provider is saved). Open a job (or tap **New Job**), then **Capture**. The photo row’s `storage_path` should look like `{job_id}/{uuid}.jpg`. A second signed-in device should see that photo after opening the job again. Rows that only have `local_uri` (captured before this storage pass) do not sync.
+Sign up with email (or phone, after the SMS provider is saved). Open a job, or tap **Add photo** on a job card. Write a note, choose the picture, then **Upload photo**. The photo row’s `storage_path` should look like `{job_id}/{uuid}.jpg`, and `caption` should be the note you typed. A second signed-in device should see that photo after opening the job again. Rows that only have `local_uri` (captured before this storage pass) do not sync.
 
 ## Setup
 

@@ -1,3 +1,9 @@
+/** Blank notes stay null so job_photos.caption is only set when the user typed one. */
+export function captionFromNote(note: string | null | undefined): string | null {
+  const trimmed = note?.trim() ?? '';
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 /** Private Supabase Storage bucket. Created by supabase/migrations/002_storage_job_photos.sql. */
 export const JOB_PHOTOS_BUCKET = 'job-photos';
 

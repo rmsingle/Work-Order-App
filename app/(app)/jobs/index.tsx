@@ -122,7 +122,8 @@ export default function JobsListScreen() {
         <Text style={styles.helloText}>
           {profile?.full_name ? `Hi, ${profile.full_name}` : 'PSG jobs'}
         </Text>
-        <Text style={styles.helloSub}>Photos + notes on each property job</Text>
+        <Text style={styles.helloSub}>Photos and notes on each property job</Text>
+        <Text style={styles.helloSub}>Use Add photo on a job to upload a picture and a note.</Text>
       </View>
 
       {error ? (
@@ -159,21 +160,32 @@ export default function JobsListScreen() {
           </View>
         }
         renderItem={({ item }) => (
-          <Pressable
-            style={styles.card}
-            onPress={() => router.push(`/(app)/jobs/${item.id}`)}
-          >
-            <View style={styles.cardTop}>
-              <Text style={styles.cardTitle} numberOfLines={2}>
-                {item.title}
+          <View style={styles.card}>
+            <Pressable
+              onPress={() => router.push(`/(app)/jobs/${item.id}`)}
+              accessibilityRole="button"
+              accessibilityLabel={`Open ${item.title}`}
+            >
+              <View style={styles.cardTop}>
+                <Text style={styles.cardTitle} numberOfLines={2}>
+                  {item.title}
+                </Text>
+                <StatusBadge status={item.status} />
+              </View>
+              <Text style={styles.address} numberOfLines={2}>
+                {item.property_address || 'No address'}
               </Text>
-              <StatusBadge status={item.status} />
-            </View>
-            <Text style={styles.address} numberOfLines={2}>
-              {item.property_address || 'No address'}
-            </Text>
-            <Text style={styles.meta}>Updated {formatWhen(item.updated_at)}</Text>
-          </Pressable>
+              <Text style={styles.meta}>Updated {formatWhen(item.updated_at)}</Text>
+            </Pressable>
+            <Pressable
+              style={styles.cardPhotoBtn}
+              onPress={() => router.push(`/(app)/jobs/${item.id}?addPhoto=1`)}
+              accessibilityRole="button"
+              accessibilityLabel={`Add photo to ${item.title}`}
+            >
+              <Text style={styles.cardPhotoBtnText}>Add photo</Text>
+            </Pressable>
+          </View>
         )}
       />
 
@@ -256,6 +268,14 @@ const styles = StyleSheet.create({
   cardTitle: { flex: 1, fontSize: 16, fontWeight: '800', color: colors.navy },
   address: { marginTop: spacing.sm, color: colors.navyMid },
   meta: { marginTop: spacing.xs, fontSize: 12, color: colors.muted },
+  cardPhotoBtn: {
+    marginTop: spacing.md,
+    backgroundColor: colors.gold,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  cardPhotoBtnText: { color: colors.navy, fontWeight: '900' },
   errorBox: {
     margin: spacing.md,
     padding: spacing.md,

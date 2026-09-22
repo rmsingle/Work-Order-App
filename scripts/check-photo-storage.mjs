@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   buildObjectPath,
+  captionFromNote,
   contentTypeForMime,
   extensionForMime,
   photoDisplayUri,
@@ -30,5 +31,10 @@ assert.equal(missingSign, null);
 
 const legacy = photoDisplayUri({ storage_path: null, local_uri: 'file:///this-device/photo.jpg' }, {});
 assert.equal(legacy, 'file:///this-device/photo.jpg');
+
+assert.equal(captionFromNote('  west unit filter  '), 'west unit filter');
+assert.equal(captionFromNote('   '), null);
+assert.equal(captionFromNote(null), null);
+assert.equal(captionFromNote(undefined), null);
 
 console.log('photo storage display checks passed');

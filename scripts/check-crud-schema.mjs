@@ -71,9 +71,16 @@ for (const required of ['job_id', 'author_id', 'body']) {
 
 const photoInsert = insertColumns(detail, 'job_photos');
 assertSubset('job_photos insert', photoInsert, photos);
-for (const required of ['job_id', 'storage_path', 'kind', 'created_by']) {
+for (const required of ['job_id', 'storage_path', 'kind', 'created_by', 'caption']) {
   if (!photoInsert.includes(required)) fail(`job_photos insert missing ${required}`);
 }
+if (!detail.includes('captionFromNote')) {
+  fail('photo upload must normalize the note into job_photos.caption');
+}
+if (!detail.includes('Add photo')) fail('job detail must show an Add photo control');
+if (/\bfab:\s*\{/.test(detail)) fail('capture must not stay a bottom-right FAB');
+if (!list.includes('Add photo')) fail('jobs list must show an Add photo control on each job');
+if (!list.includes('addPhoto=1')) fail('jobs list Add photo must open the job upload flow');
 if (!detail.includes('storage_path: storagePath')) {
   fail('job_photos insert must persist the uploaded storage path');
 }

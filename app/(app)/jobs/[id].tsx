@@ -1,4 +1,4 @@
-import React, { useCallback, useLayoutEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -10,16 +10,17 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { useLocalSearchParams, useNavigation } from 'expo-router';
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { BeforeAfterPairCard } from '@/components/BeforeAfterPair';
 import { StatusBadge } from '@/components/StatusBadge';
 import { useAuth } from '@/contexts/AuthContext';
 import { colors, spacing } from '@/constants/theme';
 import { captureFromCamera, newPairId, pickFromLibrary } from '@/lib/photos';
-import { photoDisplayUri } from '@/lib/photo-storage';
+import { captionFromNote, photoDisplayUri } from '@/lib/photo-storage';
 import { removeJobPhoto, signedUrlsForPaths, uploadJobPhoto } from '@/lib/storage';
 import { getSupabase } from '@/lib/supabase';
 import { buildTimeline } from '@/lib/timeline';
@@ -37,9 +38,26 @@ function photoUri(photo: JobPhoto, signedByPath: Readonly<Record<string, string>
   return photoDisplayUri(photo, signedByPath);
 }
 
+function firstParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+type PendingUpload = {
+  localUri: string;
+  mimeType: string | null;
+  lat: number | null;
+  lng: number | null;
+  kind: PhotoKind;
+  pairId: string | null;
+};
+
 export default function JobDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { height: windowHeight } = useWindowDimensions();
+  const params = useLocalSearchParams<{ id: string; addPhoto?: string | string[] }>();
+  const id = firstParam(params.id);
+  const addPhotoFlag = firstParam(params.addPhoto);
   const navigation = useNavigation();
+  const router = useRouter();
   const { user, profile } = useAuth();
 
   const [job, setJob] = useState<Job | null>(null);
@@ -52,7 +70,11 @@ export default function JobDetailScreen() {
   const [savingNote, setSavingNote] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetStep, setSheetStep] = useState<'source' | 'confirm'>('source');
+  const [photoNote, setPhotoNote] = useState('');
+  const [pendingUpload, setPendingUpload] = useState<PendingUpload | null>(null);
   const [pendingPairId, setPendingPairId] = useState<string | null>(null);
+  const handledAddPhoto = useRef(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -108,13 +130,53 @@ export default function JobDetailScreen() {
     }
   }, [id]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     load();
   }, [load]);
 
+  const openAddPhoto = useCallback(() => {
+    setPhotoNote('');
+    setPendingUpload(null);
+    setSheetStep('source');
+    setSheetOpen(true);
+  }, []);
+
+  const closeSheet = useCallback(() => {
+    if (capturing) return;
+    setSheetOpen(false);
+    setSheetStep('source');
+    setPendingUpload(null);
+  }, [capturing]);
+
+  useEffect(() => {
+    handledAddPhoto.current = false;
+  }, [id]);
+
+  useEffect(() => {
+    if (!job || addPhotoFlag !== '1' || handledAddPhoto.current) return;
+    handledAddPhoto.current = true;
+    openAddPhoto();
+    router.setParams({ addPhoto: '' });
+  }, [job, addPhotoFlag, openAddPhoto, router]);
+
   useLayoutEffect(() => {
-    navigation.setOptions({ title: job?.title ?? 'Job' });
-  }, [navigation, job?.title]);
+    navigation.setOptions({
+      title: job?.title ?? 'Job',
+      headerRight: job
+        ? () => (
+            <Pressable
+              onPress={openAddPhoto}
+              disabled={capturing || sheetOpen}
+              style={styles.headerBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Add photo"
+            >
+              <Text style={styles.headerBtnText}>Add photo</Text>
+            </Pressable>
+          )
+        : undefined,
+    });
+  }, [navigation, job, capturing, sheetOpen, openAddPhoto]);
 
   const timeline = useMemo(() => buildTimeline(photos, notes), [photos, notes]);
 
@@ -145,13 +207,14 @@ export default function JobDetailScreen() {
       localUri: opts.localUri,
       mimeType: opts.mimeType,
     });
+    const caption = captionFromNote(opts.caption);
     const { error: insErr } = await getSupabase().from('job_photos').insert({
       job_id: id,
       local_uri: null,
       storage_path: storagePath,
       lat: opts.lat,
       lng: opts.lng,
-      caption: opts.caption,
+      caption: caption,
       kind: opts.kind,
       pair_id: opts.pairId,
       created_by: user.id,
@@ -172,22 +235,53 @@ export default function JobDetailScreen() {
         source === 'camera'
           ? await captureFromCamera({ kind, pairId })
           : await pickFromLibrary({ kind, pairId });
-      if (!captured) return;
-      await insertPhoto({
+      if (!captured) {
+        setSheetStep('source');
+        setSheetOpen(true);
+        return;
+      }
+      setPendingUpload({
         localUri: captured.localUri,
         mimeType: captured.mimeType,
         lat: captured.lat,
         lng: captured.lng,
         kind: captured.kind,
         pairId: captured.pairId,
-        caption: captured.caption,
       });
-      if (kind === 'before' && captured.pairId) {
-        setPendingPairId(captured.pairId);
-      }
-      if (kind === 'after') setPendingPairId(null);
+      setSheetStep('confirm');
+      setSheetOpen(true);
     } catch (e) {
       Alert.alert('Capture failed', e instanceof Error ? e.message : 'Unknown error');
+      setSheetStep('source');
+      setSheetOpen(true);
+    } finally {
+      setCapturing(false);
+    }
+  }
+
+  async function confirmUpload() {
+    if (!pendingUpload) return;
+    setCapturing(true);
+    try {
+      await insertPhoto({
+        localUri: pendingUpload.localUri,
+        mimeType: pendingUpload.mimeType,
+        lat: pendingUpload.lat,
+        lng: pendingUpload.lng,
+        kind: pendingUpload.kind,
+        pairId: pendingUpload.pairId,
+        caption: photoNote,
+      });
+      if (pendingUpload.kind === 'before' && pendingUpload.pairId) {
+        setPendingPairId(pendingUpload.pairId);
+      }
+      if (pendingUpload.kind === 'after') setPendingPairId(null);
+      setPendingUpload(null);
+      setPhotoNote('');
+      setSheetStep('source');
+      setSheetOpen(false);
+    } catch (e) {
+      Alert.alert('Upload failed', e instanceof Error ? e.message : 'Unknown error');
     } finally {
       setCapturing(false);
     }
@@ -232,12 +326,14 @@ export default function JobDetailScreen() {
     );
   }
 
+  const web = Platform.OS === 'web';
+
   return (
     <KeyboardAvoidingView
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.headerCard}>
           <View style={styles.headerRow}>
             <Text style={styles.title}>{job.title}</Text>
@@ -245,14 +341,27 @@ export default function JobDetailScreen() {
           </View>
           <Text style={styles.address}>{job.property_address || 'No address'}</Text>
           <Text style={styles.meta}>Updated {formatWhen(job.updated_at)}</Text>
+          <Pressable
+            style={[styles.addPhotoBtn, (capturing || sheetOpen) && styles.disabled]}
+            onPress={openAddPhoto}
+            disabled={capturing || sheetOpen}
+            accessibilityRole="button"
+            accessibilityLabel="Add photo"
+          >
+            {capturing ? (
+              <ActivityIndicator color={colors.navy} />
+            ) : (
+              <Text style={styles.addPhotoBtnText}>Add photo</Text>
+            )}
+          </Pressable>
         </View>
 
-        {/* Photo gallery strip — primary artifact */}
         <Text style={styles.section}>Photos ({photos.length})</Text>
         {photos.length === 0 ? (
           <View style={styles.emptyPhotos}>
             <Text style={styles.emptyPhotosText}>
-              No photos yet. Tap Capture to shoot on-site (GPS + timestamp saved).
+              No photos yet. Use Add photo above to shoot on-site (GPS + timestamp saved). You can
+              write a note before the photo uploads.
             </Text>
           </View>
         ) : (
@@ -269,13 +378,17 @@ export default function JobDetailScreen() {
                     </View>
                   )}
                   <Text style={styles.kindBadge}>{p.kind}</Text>
+                  {p.caption ? (
+                    <Text style={styles.thumbCaption} numberOfLines={2}>
+                      {p.caption}
+                    </Text>
+                  ) : null}
                 </View>
               );
             })}
           </ScrollView>
         )}
 
-        {/* Before / After pairs side-by-side */}
         {pairs.length > 0 ? (
           <>
             <Text style={styles.section}>Before / After</Text>
@@ -290,7 +403,6 @@ export default function JobDetailScreen() {
           </>
         ) : null}
 
-        {/* Chronological timeline: photos + notes */}
         <Text style={styles.section}>Timeline</Text>
         {timeline.length === 0 ? (
           <Text style={styles.muted}>Photos and notes will appear here in order.</Text>
@@ -328,7 +440,6 @@ export default function JobDetailScreen() {
           })
         )}
 
-        {/* Add note */}
         <Text style={styles.section}>Add note</Text>
         <TextInput
           style={styles.noteInput}
@@ -349,61 +460,130 @@ export default function JobDetailScreen() {
             <Text style={styles.secondaryBtnText}>Save note</Text>
           )}
         </Pressable>
-
-        <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* Fast Capture FAB — main action */}
-      <Pressable
-        style={styles.fab}
-        onPress={() => setSheetOpen(true)}
-        disabled={capturing}
-      >
-        {capturing ? (
-          <ActivityIndicator color={colors.navy} />
-        ) : (
-          <Text style={styles.fabText}>Capture</Text>
-        )}
-      </Pressable>
+      <Modal visible={sheetOpen} transparent animationType="slide" onRequestClose={closeSheet}>
+        <KeyboardAvoidingView
+          style={styles.sheetBackdrop}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <Pressable
+            style={styles.dismissLayer}
+            onPress={closeSheet}
+            accessibilityLabel="Dismiss add photo"
+          />
+          <View style={styles.sheet}>
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                bounces={false}
+                style={{ maxHeight: Math.round(windowHeight * 0.8) }}
+              >
+                {sheetStep === 'confirm' && pendingUpload ? (
+                  <>
+                    <Text style={styles.sheetTitle}>Upload photo</Text>
+                    <Text style={styles.sheetSub}>
+                      Add or edit the note, then upload. It is saved on this photo as the caption.
+                    </Text>
+                    <Image
+                      source={{ uri: pendingUpload.localUri }}
+                      style={styles.preview}
+                      contentFit="cover"
+                    />
+                    <Text style={styles.fieldLabel}>Note</Text>
+                    <TextInput
+                      style={styles.sheetInput}
+                      placeholder="Note for this photo…"
+                      placeholderTextColor={colors.muted}
+                      value={photoNote}
+                      onChangeText={setPhotoNote}
+                      multiline
+                      autoFocus
+                    />
+                    <Pressable
+                      style={[styles.uploadBtn, capturing && styles.disabled]}
+                      onPress={confirmUpload}
+                      disabled={capturing}
+                    >
+                      {capturing ? (
+                        <ActivityIndicator color={colors.navy} />
+                      ) : (
+                        <Text style={styles.uploadBtnText}>Upload photo</Text>
+                      )}
+                    </Pressable>
+                    <Pressable onPress={closeSheet} style={styles.sheetCancel} disabled={capturing}>
+                      <Text style={styles.sheetCancelText}>Cancel</Text>
+                    </Pressable>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.sheetTitle}>Add photo</Text>
+                    <Text style={styles.sheetSub}>
+                      Write a note for this photo, then take or choose the picture. The note is
+                      saved with the upload.
+                      {web ? ' On web, choose an image file if the camera is unavailable.' : ''}
+                    </Text>
+                    <Text style={styles.fieldLabel}>Note</Text>
+                    <TextInput
+                      style={styles.sheetInput}
+                      placeholder="Note for this photo…"
+                      placeholderTextColor={colors.muted}
+                      value={photoNote}
+                      onChangeText={setPhotoNote}
+                      multiline
+                    />
 
-      <Modal visible={sheetOpen} transparent animationType="slide" onRequestClose={() => setSheetOpen(false)}>
-        <Pressable style={styles.sheetBackdrop} onPress={() => setSheetOpen(false)}>
-          <View style={styles.sheet} onStartShouldSetResponder={() => true}>
-            <Text style={styles.sheetTitle}>Fast Capture</Text>
-            <Text style={styles.sheetSub}>
-              GPS tagged when permission allows. Photos upload to Supabase Storage and sync across devices.
-            </Text>
-
-            <Pressable style={styles.sheetBtn} onPress={() => runCapture('general', null, 'camera')}>
-              <Text style={styles.sheetBtnText}>Camera · general</Text>
-            </Pressable>
-            <Pressable style={styles.sheetBtn} onPress={() => runCapture('general', null, 'library')}>
-              <Text style={styles.sheetBtnText}>Library · general</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.sheetBtn, styles.sheetBefore]}
-              onPress={() => runCapture('before', newPairId(), 'camera')}
-            >
-              <Text style={styles.sheetBtnText}>Camera · BEFORE (start pair)</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.sheetBtn, styles.sheetAfter]}
-              onPress={() => {
-                const pair = pendingPairId || pairs.find((p) => p.before && !p.after)?.pair_id;
-                if (!pair) {
-                  Alert.alert('No open before', 'Capture a BEFORE photo first to start a pair.');
-                  return;
-                }
-                runCapture('after', pair, 'camera');
-              }}
-            >
-              <Text style={styles.sheetBtnText}>Camera · AFTER (complete pair)</Text>
-            </Pressable>
-            <Pressable onPress={() => setSheetOpen(false)} style={styles.sheetCancel}>
-              <Text style={styles.sheetCancelText}>Cancel</Text>
-            </Pressable>
+                    {web ? (
+                      <Pressable
+                        style={styles.sheetBtn}
+                        onPress={() => runCapture('general', null, 'library')}
+                      >
+                        <Text style={styles.sheetBtnText}>Choose image file</Text>
+                      </Pressable>
+                    ) : null}
+                    <Pressable style={styles.sheetBtn} onPress={() => runCapture('general', null, 'camera')}>
+                      <Text style={styles.sheetBtnText}>
+                        {web ? 'Camera or choose file' : 'Camera · general'}
+                      </Text>
+                    </Pressable>
+                    {web ? null : (
+                      <Pressable
+                        style={styles.sheetBtn}
+                        onPress={() => runCapture('general', null, 'library')}
+                      >
+                        <Text style={styles.sheetBtnText}>Photo library · general</Text>
+                      </Pressable>
+                    )}
+                    <Pressable
+                      style={[styles.sheetBtn, styles.sheetBefore]}
+                      onPress={() => runCapture('before', newPairId(), web ? 'library' : 'camera')}
+                    >
+                      <Text style={styles.sheetBtnText}>
+                        {web ? 'Before photo (start pair)' : 'Camera · BEFORE (start pair)'}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.sheetBtn, styles.sheetAfter]}
+                      onPress={() => {
+                        const pair = pendingPairId || pairs.find((p) => p.before && !p.after)?.pair_id;
+                        if (!pair) {
+                          Alert.alert('No open before', 'Capture a BEFORE photo first to start a pair.');
+                          return;
+                        }
+                        runCapture('after', pair, web ? 'library' : 'camera');
+                      }}
+                    >
+                      <Text style={styles.sheetBtnText}>
+                        {web ? 'After photo (complete pair)' : 'Camera · AFTER (complete pair)'}
+                      </Text>
+                    </Pressable>
+                    <Pressable onPress={closeSheet} style={styles.sheetCancel}>
+                      <Text style={styles.sheetCancelText}>Cancel</Text>
+                    </Pressable>
+                  </>
+                )}
+              </ScrollView>
           </View>
-        </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
     </KeyboardAvoidingView>
   );
@@ -425,6 +605,16 @@ const styles = StyleSheet.create({
   title: { flex: 1, fontSize: 20, fontWeight: '800', color: colors.navy },
   address: { marginTop: spacing.sm, color: colors.navyMid },
   meta: { marginTop: 4, fontSize: 12, color: colors.muted },
+  headerBtn: { paddingHorizontal: 12, paddingVertical: 6 },
+  headerBtnText: { color: colors.gold, fontWeight: '800' },
+  addPhotoBtn: {
+    marginTop: spacing.md,
+    backgroundColor: colors.gold,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  addPhotoBtnText: { color: colors.navy, fontWeight: '900', fontSize: 16 },
   section: {
     marginTop: spacing.md,
     marginBottom: spacing.sm,
@@ -452,6 +642,7 @@ const styles = StyleSheet.create({
     color: colors.navy,
     textTransform: 'uppercase',
   },
+  thumbCaption: { marginTop: 2, fontSize: 11, color: colors.muted },
   timelineCard: {
     backgroundColor: colors.white,
     borderRadius: 12,
@@ -486,27 +677,18 @@ const styles = StyleSheet.create({
   },
   secondaryBtnText: { color: colors.navy, fontWeight: '800' },
   disabled: { opacity: 0.5 },
-  fab: {
-    position: 'absolute',
-    right: spacing.md,
-    bottom: spacing.lg,
-    backgroundColor: colors.gold,
-    paddingHorizontal: 22,
-    paddingVertical: 16,
-    borderRadius: 999,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-    minWidth: 120,
-    alignItems: 'center',
-  },
-  fabText: { color: colors.navy, fontWeight: '900', fontSize: 16 },
   sheetBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(11,31,58,0.45)',
     justifyContent: 'flex-end',
+  },
+  dismissLayer: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    zIndex: 1,
   },
   sheet: {
     backgroundColor: colors.white,
@@ -514,9 +696,30 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 20,
     padding: spacing.lg,
     paddingBottom: spacing.xl,
+    maxHeight: '92%',
+    zIndex: 2,
   },
   sheetTitle: { fontSize: 20, fontWeight: '900', color: colors.navy },
   sheetSub: { color: colors.muted, marginTop: 4, marginBottom: spacing.md, lineHeight: 18 },
+  fieldLabel: { fontWeight: '700', color: colors.navy, marginBottom: 6 },
+  sheetInput: {
+    minHeight: 72,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    padding: spacing.md,
+    backgroundColor: colors.offWhite,
+    color: colors.navy,
+    textAlignVertical: 'top',
+    marginBottom: spacing.md,
+  },
+  preview: {
+    width: '100%',
+    height: 180,
+    borderRadius: 12,
+    backgroundColor: colors.border,
+    marginBottom: spacing.md,
+  },
   sheetBtn: {
     backgroundColor: colors.navy,
     borderRadius: 12,
@@ -527,6 +730,13 @@ const styles = StyleSheet.create({
   sheetBefore: { backgroundColor: colors.before },
   sheetAfter: { backgroundColor: colors.after },
   sheetBtnText: { color: colors.white, fontWeight: '800' },
+  uploadBtn: {
+    backgroundColor: colors.gold,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  uploadBtnText: { color: colors.navy, fontWeight: '900' },
   sheetCancel: { paddingVertical: 12, alignItems: 'center' },
   sheetCancelText: { color: colors.muted, fontWeight: '700' },
   error: { color: colors.danger, textAlign: 'center' },
