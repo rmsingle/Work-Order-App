@@ -110,6 +110,23 @@ export async function pickFromLibrary(opts?: CaptureOpts): Promise<CapturedPhoto
   return launchCapture('library', opts);
 }
 
+/** Several library photos at once. On web this is a multi-file picker. Cancel returns an empty list. */
+export async function pickManyFromLibrary(opts?: CaptureOpts): Promise<CapturedPhoto[]> {
+  const lib = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  if (!lib.granted) {
+    throw new Error('Photo library permission is required.');
+  }
+
+  const result = await ImagePicker.launchImageLibraryAsync({
+    ...pickerOptions,
+    allowsMultipleSelection: true,
+  });
+  if (result.canceled || !result.assets?.length) return [];
+
+  const gps = await readGps();
+  return result.assets.map((asset) => capturedFromAsset(asset, opts, gps));
+}
+
 /** Group before/after photos that share a pair_id. */
 export function buildBeforeAfterPairs(
   photos: { id: string; kind: PhotoKind; pair_id: string | null; created_at: string }[]

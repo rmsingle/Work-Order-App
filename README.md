@@ -17,7 +17,7 @@ CompanyCam-style MVP: **photos are the primary artifact** on each job (GPS + tim
 | Session persistence | Working (AsyncStorage / localStorage) |
 | Sign out | Working |
 | Jobs list (centered title, address, status, updated_at, pull-to-refresh, empty state) | Working — gold **New Job** at the top; no Add photo on the cards |
-| New Job (title + property address) | Working — gold button at the top of the Jobs dashboard opens the existing New Job sheet |
+| New Job (title + property address + photos) | Working — gold button opens the sheet; photos upload to `job-photos` after the job row exists |
 | Job detail — centered header title, two-column rows (original left, Mark complete or completion photo right) | Working |
 | Fast Capture (camera / library) | Working — uploads to Storage and sets `storage_path` |
 | GPS lat/lng on photos | Working when permission granted; null if denied |
@@ -71,7 +71,7 @@ README.md
 | Caption | `caption` (optional) |
 | Before / after | `kind` + `pair_id`. Left column is the original; the right column is Mark complete until the after photo replaces it |
 | Field notes | `job_notes` listed as text under Notes. Photos are not repeated there |
-| Fast Capture | **Add photo** is on the job detail page only: navy header and gold button under the title. The jobs list has no Add photo control; open the job first. The sheet takes a note, then camera or library (web falls back to a file picker). Upload saves the note on `job_photos.caption` |
+| Fast Capture | **Add photo** is on the job detail page: navy header and gold button under the title. The jobs list cards have no Add photo control. **New Job** can attach several photos in the create sheet; they upload with the same `job-photos` pipeline after the job exists. Detail upload takes a note, then camera or library (web falls back to a file picker). |
 | Mark complete | On each original photo, in the right-hand column. Opens the upload sheet for a completion photo (`kind = after`, shared `pair_id`). After upload, that photo replaces the button. **Upload and mark complete** sets `jobs.status` to `done`. Cancel does not change status |
 | Notes / comments | `job_notes` + add-note form |
 

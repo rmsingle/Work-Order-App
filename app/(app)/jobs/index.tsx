@@ -4,16 +4,23 @@ import {
   Alert,
   FlatList,
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { StatusBadge } from '@/components/StatusBadge';
+import { captureFromCamera, pickManyFromLibrary } from '@/lib/photos';
+import { captionFromNote } from '@/lib/photo-storage';
+import { removeJobPhoto, uploadJobPhoto } from '@/lib/storage';
 import { getSupabase } from '@/lib/supabase';
 import type { Job } from '@/lib/types';
 import { colors, spacing } from '@/constants/theme';
@@ -27,6 +34,29 @@ function formatWhen(iso: string) {
 }
 
 const HEADER_SIDE = 104;
+
+type DraftJobPhoto = {
+  id: string;
+  localUri: string;
+  mimeType: string | null;
+  lat: number | null;
+  lng: number | null;
+};
+
+function draftFromCapture(photo: {
+  localUri: string;
+  mimeType: string | null;
+  lat: number | null;
+  lng: number | null;
+}): DraftJobPhoto {
+  return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    localUri: photo.localUri,
+    mimeType: photo.mimeType,
+    lat: photo.lat,
+    lng: photo.lng,
+  };
+}
 
 export function JobListCard({
   title,
@@ -73,7 +103,11 @@ export default function JobsListScreen() {
   const [newOpen, setNewOpen] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newAddress, setNewAddress] = useState('');
+  const [draftPhotos, setDraftPhotos] = useState<DraftJobPhoto[]>([]);
+  const [createStatus, setCreateStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const { height: windowHeight } = useWindowDimensions();
+  const web = Platform.OS === 'web';
 
   const load = useCallback(async () => {
     setError(null);
@@ -118,13 +152,42 @@ export default function JobsListScreen() {
     });
   }, [navigation, signOut]);
 
+  async function addLibraryPhotos() {
+    try {
+      const picked = await pickManyFromLibrary({ kind: 'general' });
+      if (picked.length === 0) return;
+      setDraftPhotos((current) => [...current, ...picked.map(draftFromCapture)]);
+    } catch (e) {
+      Alert.alert('Could not add photos', e instanceof Error ? e.message : 'Unknown error');
+    }
+  }
+
+  async function addCameraPhoto() {
+    try {
+      const captured = await captureFromCamera({ kind: 'general' });
+      if (!captured) return;
+      setDraftPhotos((current) => [...current, draftFromCapture(captured)]);
+    } catch (e) {
+      Alert.alert('Could not add photos', e instanceof Error ? e.message : 'Unknown error');
+    }
+  }
+
+  function closeNewJob() {
+    if (saving) return;
+    setNewOpen(false);
+  }
+
   async function createJob() {
     const title = newTitle.trim();
     if (!title) {
       Alert.alert('Title required', 'Enter a job title.');
       return;
     }
+    if (!user) return;
     setSaving(true);
+    setCreateStatus('Creating job…');
+    let createdJobId: string | null = null;
+    const pending = draftPhotos;
     try {
       const { data, error: insErr } = await getSupabase()
         .from('jobs')
@@ -137,17 +200,71 @@ export default function JobsListScreen() {
         .select('id')
         .single();
       if (insErr) throw insErr;
+      if (!data?.id) throw new Error('Job was not created.');
+      const jobId = data.id;
+      createdJobId = jobId;
+
+      const failures: string[] = [];
+      for (let index = 0; index < pending.length; index += 1) {
+        const photo = pending[index];
+        setCreateStatus(`Uploading photo ${index + 1} of ${pending.length}…`);
+        try {
+          const storagePath = await uploadJobPhoto({
+            jobId,
+            localUri: photo.localUri,
+            mimeType: photo.mimeType,
+          });
+          const { error: photoErr } = await getSupabase().from('job_photos').insert({
+            job_id: jobId,
+            local_uri: null,
+            storage_path: storagePath,
+            lat: photo.lat,
+            lng: photo.lng,
+            caption: captionFromNote(null),
+            kind: 'general',
+            pair_id: null,
+            created_by: user.id,
+          });
+          if (photoErr) {
+            await removeJobPhoto(storagePath).catch(() => undefined);
+            throw photoErr;
+          }
+        } catch (e) {
+          failures.push(e instanceof Error ? e.message : 'Upload failed');
+        }
+      }
+
       setNewOpen(false);
       setNewTitle('');
       setNewAddress('');
+      setDraftPhotos([]);
       await load();
-      if (data?.id) {
-        router.push(`/(app)/jobs/${data.id}`);
+      if (failures.length > 0) {
+        const saved = pending.length - failures.length;
+        Alert.alert(
+          'Job created, photos incomplete',
+          `The job was created. ${saved} of ${pending.length} photos uploaded. ${failures.length} could not be uploaded. ${failures[0]}`
+        );
       }
+      router.push(`/(app)/jobs/${createdJobId}`);
     } catch (e) {
-      Alert.alert('Could not create job', e instanceof Error ? e.message : 'Unknown error');
+      if (createdJobId) {
+        setNewOpen(false);
+        setNewTitle('');
+        setNewAddress('');
+        setDraftPhotos([]);
+        await load();
+        Alert.alert(
+          'Job created, photos incomplete',
+          `The job was created, but the photos could not be finished. ${e instanceof Error ? e.message : 'Unknown error'}`
+        );
+        router.push(`/(app)/jobs/${createdJobId}`);
+      } else {
+        Alert.alert('Could not create job', e instanceof Error ? e.message : 'Unknown error');
+      }
     } finally {
       setSaving(false);
+      setCreateStatus(null);
     }
   }
 
@@ -201,7 +318,7 @@ export default function JobsListScreen() {
           <View style={styles.empty}>
             <Text style={styles.emptyTitle}>No jobs yet</Text>
             <Text style={styles.emptyBody}>
-              Tap New (top right) to create a job with a title and property address, or run the SQL
+              Tap New Job above to create a job with a title, address, and photos, or run the SQL
               seed. Pull to refresh.
             </Text>
             <Pressable style={styles.newBtn} onPress={() => setNewOpen(true)}>
@@ -220,49 +337,114 @@ export default function JobsListScreen() {
         )}
       />
 
-      <Modal
-        visible={newOpen}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setNewOpen(false)}
-      >
-        <Pressable style={styles.sheetBackdrop} onPress={() => setNewOpen(false)}>
-          <View style={styles.sheet} onStartShouldSetResponder={() => true}>
-            <Text style={styles.sheetTitle}>New Job</Text>
-            <Text style={styles.sheetSub}>Title and property address for this site.</Text>
-            <Text style={styles.fieldLabel}>Title</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. HVAC filter — Gilmer"
-              placeholderTextColor={colors.muted}
-              value={newTitle}
-              onChangeText={setNewTitle}
-              autoFocus
-            />
-            <Text style={styles.fieldLabel}>Property address</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Street, city, state"
-              placeholderTextColor={colors.muted}
-              value={newAddress}
-              onChangeText={setNewAddress}
-            />
-            <Pressable
-              style={[styles.primaryBtn, (saving || !newTitle.trim()) && styles.disabled]}
-              onPress={createJob}
-              disabled={saving || !newTitle.trim()}
+      <Modal visible={newOpen} transparent animationType="slide" onRequestClose={closeNewJob}>
+        <View style={styles.sheetBackdrop}>
+          <Pressable
+            style={styles.dismissLayer}
+            onPress={closeNewJob}
+            accessibilityLabel="Dismiss new job"
+          />
+          <View style={styles.sheet}>
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              bounces={false}
+              style={{ maxHeight: Math.round(windowHeight * 0.8) }}
             >
-              {saving ? (
-                <ActivityIndicator color={colors.navy} />
+              <Text style={styles.sheetTitle}>New Job</Text>
+              <Text style={styles.sheetSub}>
+                Title and property address for this site. You can dump several photos now. They
+                upload after the job is created. A note on each photo can wait until you are in the job.
+              </Text>
+              <Text style={styles.fieldLabel}>Title</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g. HVAC filter — Gilmer"
+                placeholderTextColor={colors.muted}
+                value={newTitle}
+                onChangeText={setNewTitle}
+                autoFocus
+                editable={!saving}
+              />
+              <Text style={styles.fieldLabel}>Property address</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Street, city, state"
+                placeholderTextColor={colors.muted}
+                value={newAddress}
+                onChangeText={setNewAddress}
+                editable={!saving}
+              />
+              <Text style={styles.fieldLabel}>Photos</Text>
+              <View style={styles.photoActions}>
+                <Pressable
+                  style={[styles.photoPickBtn, saving && styles.disabled]}
+                  onPress={addLibraryPhotos}
+                  disabled={saving}
+                  accessibilityRole="button"
+                  accessibilityLabel="Choose photos"
+                >
+                  <Text style={styles.photoPickBtnText}>Choose photos</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.photoPickBtn, saving && styles.disabled]}
+                  onPress={addCameraPhoto}
+                  disabled={saving}
+                  accessibilityRole="button"
+                  accessibilityLabel={web ? 'Camera or choose file' : 'Camera'}
+                >
+                  <Text style={styles.photoPickBtnText}>{web ? 'Camera or file' : 'Camera'}</Text>
+                </Pressable>
+              </View>
+              {draftPhotos.length > 0 ? (
+                <>
+                  <Text style={styles.photoCount}>
+                    {draftPhotos.length} photo{draftPhotos.length === 1 ? '' : 's'} ready
+                  </Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoStrip}>
+                    {draftPhotos.map((photo) => (
+                      <View key={photo.id} style={styles.photoChip}>
+                        <Image
+                          source={{ uri: photo.localUri }}
+                          style={styles.photoThumb}
+                          contentFit="contain"
+                        />
+                        <Pressable
+                          onPress={() =>
+                            setDraftPhotos((current) => current.filter((item) => item.id !== photo.id))
+                          }
+                          disabled={saving}
+                          accessibilityRole="button"
+                          accessibilityLabel="Remove photo"
+                        >
+                          <Text style={styles.removePhoto}>Remove</Text>
+                        </Pressable>
+                      </View>
+                    ))}
+                  </ScrollView>
+                </>
               ) : (
-                <Text style={styles.primaryBtnText}>Create job</Text>
+                <Text style={styles.photoHint}>No photos yet. Choose several from your library, or take one.</Text>
               )}
-            </Pressable>
-            <Pressable onPress={() => setNewOpen(false)} style={styles.sheetCancel}>
-              <Text style={styles.sheetCancelText}>Cancel</Text>
-            </Pressable>
+              <Pressable
+                style={[styles.primaryBtn, (saving || !newTitle.trim()) && styles.disabled]}
+                onPress={createJob}
+                disabled={saving || !newTitle.trim()}
+              >
+                {saving ? (
+                  <ActivityIndicator color={colors.navy} />
+                ) : (
+                  <Text style={styles.primaryBtnText}>
+                    {draftPhotos.length > 0 ? 'Create job and upload photos' : 'Create job'}
+                  </Text>
+                )}
+              </Pressable>
+              {createStatus ? <Text style={styles.progress}>{createStatus}</Text> : null}
+              <Pressable onPress={closeNewJob} style={styles.sheetCancel} disabled={saving}>
+                <Text style={styles.sheetCancelText}>Cancel</Text>
+              </Pressable>
+            </ScrollView>
           </View>
-        </Pressable>
+        </View>
       </Modal>
     </View>
   );
@@ -323,12 +505,20 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(11,31,58,0.45)',
     justifyContent: 'flex-end',
   },
+  dismissLayer: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+  },
   sheet: {
     backgroundColor: colors.white,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: spacing.lg,
     paddingBottom: spacing.xl,
+    zIndex: 2,
   },
   sheetTitle: { fontSize: 20, fontWeight: '900', color: colors.navy },
   sheetSub: { color: colors.muted, marginTop: 4, marginBottom: spacing.md, lineHeight: 18 },
@@ -350,6 +540,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   primaryBtnText: { color: colors.navy, fontWeight: '900' },
+  photoActions: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm },
+  photoPickBtn: {
+    flex: 1,
+    backgroundColor: colors.navy,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  photoPickBtnText: { color: colors.gold, fontWeight: '800' },
+  photoCount: { color: colors.navy, fontWeight: '700', marginBottom: spacing.sm },
+  photoHint: { color: colors.muted, marginBottom: spacing.md, lineHeight: 20 },
+  photoStrip: { marginBottom: spacing.md },
+  photoChip: { marginRight: spacing.sm, width: 84 },
+  photoThumb: {
+    width: 84,
+    height: 84,
+    borderRadius: 10,
+    backgroundColor: colors.offWhite,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  removePhoto: { marginTop: 4, color: colors.danger, fontWeight: '700', fontSize: 12, textAlign: 'center' },
+  progress: { marginTop: spacing.sm, color: colors.navy, fontWeight: '800', textAlign: 'center' },
   disabled: { opacity: 0.5 },
   sheetCancel: { paddingVertical: 12, alignItems: 'center', marginTop: spacing.sm },
   sheetCancelText: { color: colors.muted, fontWeight: '700' },
