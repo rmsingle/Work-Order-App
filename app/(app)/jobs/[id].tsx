@@ -76,7 +76,6 @@ export default function JobDetailScreen() {
   const [sheetStep, setSheetStep] = useState<'source' | 'confirm'>('source');
   const [photoNote, setPhotoNote] = useState('');
   const [pendingUpload, setPendingUpload] = useState<PendingUpload | null>(null);
-  const [pendingPairId, setPendingPairId] = useState<string | null>(null);
   const [finishTarget, setFinishTarget] = useState<FinishTarget | null>(null);
   const [archiving, setArchiving] = useState(false);
   const handledAddPhoto = useRef(false);
@@ -354,10 +353,6 @@ export default function JobDetailScreen() {
         caption: photoNote,
         finish: finishTarget,
       });
-      if (pendingUpload.kind === 'before' && pendingUpload.pairId) {
-        setPendingPairId(pendingUpload.pairId);
-      }
-      if (pendingUpload.kind === 'after') setPendingPairId(null);
       setPendingUpload(null);
       setPhotoNote('');
       setFinishTarget(null);
@@ -671,49 +666,22 @@ export default function JobDetailScreen() {
                       onChangeText={setPhotoNote}
                       multiline
                     />
-
-                    {web ? (
-                      <Pressable
-                        style={styles.sheetBtn}
-                        onPress={() => runCapture('general', null, 'library')}
-                      >
-                        <Text style={styles.sheetBtnText}>Choose image file</Text>
-                      </Pressable>
-                    ) : null}
-                    <Pressable style={styles.sheetBtn} onPress={() => runCapture('general', null, 'camera')}>
-                      <Text style={styles.sheetBtnText}>
-                        {web ? 'Camera or choose file' : 'Camera · general'}
-                      </Text>
-                    </Pressable>
-                    {web ? null : (
-                      <Pressable
-                        style={styles.sheetBtn}
-                        onPress={() => runCapture('general', null, 'library')}
-                      >
-                        <Text style={styles.sheetBtnText}>Photo library · general</Text>
-                      </Pressable>
-                    )}
                     <Pressable
-                      style={[styles.sheetBtn, styles.sheetBefore]}
-                      onPress={() => runCapture('before', newPairId(), web ? 'library' : 'camera')}
+                      style={styles.sheetBtn}
+                      onPress={() => runCapture('general', null, 'camera')}
+                      accessibilityRole="button"
+                      accessibilityLabel="Use camera"
                     >
-                      <Text style={styles.sheetBtnText}>
-                        {web ? 'Before photo (start pair)' : 'Camera · BEFORE (start pair)'}
-                      </Text>
+                      <Text style={styles.sheetBtnText}>Use camera</Text>
                     </Pressable>
                     <Pressable
-                      style={[styles.sheetBtn, styles.sheetAfter]}
-                      onPress={() => {
-                        const pair = pendingPairId || pairs.find((p) => p.before && !p.after)?.pair_id;
-                        if (!pair) {
-                          Alert.alert('No open before', 'Capture a BEFORE photo first to start a pair.');
-                          return;
-                        }
-                        runCapture('after', pair, web ? 'library' : 'camera');
-                      }}
+                      style={styles.sheetBtn}
+                      onPress={() => runCapture('general', null, 'library')}
+                      accessibilityRole="button"
+                      accessibilityLabel={web ? 'Choose from photos or files' : 'Choose from library'}
                     >
                       <Text style={styles.sheetBtnText}>
-                        {web ? 'After photo (complete pair)' : 'Camera · AFTER (complete pair)'}
+                        {web ? 'Choose from photos or files' : 'Choose from library'}
                       </Text>
                     </Pressable>
                     <Pressable onPress={closeSheet} style={styles.sheetCancel}>
@@ -868,8 +836,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: spacing.sm,
   },
-  sheetBefore: { backgroundColor: colors.before },
-  sheetAfter: { backgroundColor: colors.after },
   sheetBtnText: { color: colors.white, fontWeight: '800' },
   uploadBtn: {
     backgroundColor: colors.gold,

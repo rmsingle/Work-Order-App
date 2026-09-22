@@ -111,6 +111,15 @@ if (!detail.includes('captionFromNote')) {
 }
 if (!detail.includes('Add photo')) fail('job detail must show an Add photo control');
 if (/\bfab:\s*\{/.test(detail)) fail('capture must not stay a bottom-right FAB');
+if (detail.includes('sheetBefore') || detail.includes('sheetAfter')) {
+  fail('Add photo sheet must not offer before/after category buttons');
+}
+if (detail.includes('BEFORE (start pair)') || detail.includes('AFTER (complete pair)')) {
+  fail('Add photo sheet must not label before/after capture paths');
+}
+if (!detail.includes('Use camera') || !detail.includes('Choose from library')) {
+  fail('Add photo sheet must offer camera and library only');
+}
 if (list.includes('Add photo') || list.includes('addPhoto=1') || list.includes('cardPhotoBtn')) {
   fail('jobs list must not show Add photo; open the job first');
 }
