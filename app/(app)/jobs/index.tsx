@@ -26,6 +26,8 @@ function formatWhen(iso: string) {
   }
 }
 
+const HEADER_SIDE = 104;
+
 export function JobListCard({
   title,
   address,
@@ -98,13 +100,18 @@ export default function JobsListScreen() {
 
   useLayoutEffect(() => {
     navigation.setOptions({
+      title: 'Jobs',
+      headerTitleAlign: 'center',
+      headerLeft: () => <View style={{ width: HEADER_SIDE }} />,
       headerRight: () => (
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Pressable onPress={() => setNewOpen(true)} style={{ paddingHorizontal: 10 }}>
-            <Text style={{ color: colors.gold, fontWeight: '800' }}>New</Text>
-          </Pressable>
-          <Pressable onPress={() => signOut().catch(() => undefined)} style={{ paddingHorizontal: 12 }}>
-            <Text style={{ color: colors.gold, fontWeight: '700' }}>Sign out</Text>
+        <View style={{ width: HEADER_SIDE, alignItems: 'flex-end', justifyContent: 'center' }}>
+          <Pressable
+            onPress={() => signOut().catch(() => undefined)}
+            style={styles.signOutBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Sign out"
+          >
+            <Text style={styles.signOutText}>Sign out</Text>
           </Pressable>
         </View>
       ),
@@ -154,6 +161,14 @@ export default function JobsListScreen() {
 
   return (
     <View style={styles.flex}>
+      <Pressable
+        style={styles.newJobBtn}
+        onPress={() => setNewOpen(true)}
+        accessibilityRole="button"
+        accessibilityLabel="New job"
+      >
+        <Text style={styles.newJobBtnText}>New Job</Text>
+      </Pressable>
       <View style={styles.hello}>
         <Text style={styles.helloText}>
           {profile?.full_name ? `Hi, ${profile.full_name}` : 'PSG jobs'}
@@ -256,9 +271,20 @@ export default function JobsListScreen() {
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.offWhite },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  hello: { paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.sm },
+  hello: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.sm },
   helloText: { fontSize: 18, fontWeight: '800', color: colors.navy },
   helloSub: { color: colors.muted, marginTop: 2 },
+  newJobBtn: {
+    marginHorizontal: spacing.md,
+    marginTop: spacing.md,
+    backgroundColor: colors.gold,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  newJobBtnText: { color: colors.navy, fontWeight: '900', fontSize: 16 },
+  signOutBtn: { paddingHorizontal: 12, paddingVertical: 6 },
+  signOutText: { color: colors.gold, fontWeight: '700' },
   list: { padding: spacing.md, paddingTop: 0, gap: spacing.sm },
   emptyWrap: { flexGrow: 1, justifyContent: 'center', padding: spacing.lg },
   empty: { alignItems: 'center' },

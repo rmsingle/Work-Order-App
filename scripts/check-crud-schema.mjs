@@ -84,6 +84,12 @@ if (/\bfab:\s*\{/.test(detail)) fail('capture must not stay a bottom-right FAB')
 if (list.includes('Add photo') || list.includes('addPhoto=1') || list.includes('cardPhotoBtn')) {
   fail('jobs list must not show Add photo; open the job first');
 }
+if (!list.includes("headerTitleAlign: 'center'")) fail('Jobs title must be centered in the header');
+const newJobBtn = list.match(/newJobBtn:\s*\{([^}]+)\}/);
+if (!newJobBtn || !newJobBtn[1].includes('backgroundColor: colors.gold') || !newJobBtn[1].includes('paddingVertical: 14')) {
+  fail('jobs list must show a gold New Job button at the top');
+}
+if (!list.includes('>New Job<')) fail('jobs list New Job button must be labeled New Job');
 if (!finishButton.includes('Mark complete')) fail('photo control must be labeled Mark complete');
 if (finishButton.includes('Job Finished') || detail.includes('Job Finished')) {
   fail('user-facing Job Finished label must be renamed to Mark complete');

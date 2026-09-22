@@ -16,8 +16,8 @@ CompanyCam-style MVP: **photos are the primary artifact** on each job (GPS + tim
 | Phone OTP sign-in | Working after Phone + an SMS provider are enabled in Supabase |
 | Session persistence | Working (AsyncStorage / localStorage) |
 | Sign out | Working |
-| Jobs list (title, address, status, updated_at, pull-to-refresh, empty state) | Working — open a job to add photos; list has no Add photo button |
-| New Job (title + property address) | Working |
+| Jobs list (centered title, address, status, updated_at, pull-to-refresh, empty state) | Working — gold **New Job** at the top; no Add photo on the cards |
+| New Job (title + property address) | Working — gold button at the top of the Jobs dashboard opens the existing New Job sheet |
 | Job detail — centered header title, two-column rows (original left, Mark complete or completion photo right) | Working |
 | Fast Capture (camera / library) | Working — uploads to Storage and sets `storage_path` |
 | GPS lat/lng on photos | Working when permission granted; null if denied |
