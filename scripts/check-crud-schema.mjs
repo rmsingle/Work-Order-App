@@ -4,7 +4,17 @@ import path from 'node:path';
 const root = path.resolve(import.meta.dirname, '..');
 const sql = fs.readFileSync(path.join(root, 'supabase/migrations/001_init.sql'), 'utf8');
 const storageSql = fs.readFileSync(path.join(root, 'supabase/migrations/002_storage_job_photos.sql'), 'utf8');
+const archiveSql = fs.readFileSync(path.join(root, 'supabase/migrations/003_jobs_archived_at.sql'), 'utf8');
+const numberSql = fs.readFileSync(path.join(root, 'supabase/migrations/004_jobs_job_number_and_delete.sql'), 'utf8');
 const detail = fs.readFileSync(path.join(root, 'app/(app)/jobs/[id].tsx'), 'utf8');
+const login = fs.readFileSync(path.join(root, 'app/(auth)/login.tsx'), 'utf8');
+const phoneAuth = fs.readFileSync(path.join(root, 'lib/phoneAuth.ts'), 'utf8');
+const pairCard = fs.readFileSync(path.join(root, 'components/BeforeAfterPair.tsx'), 'utf8');
+const finishButton = fs.readFileSync(path.join(root, 'components/JobFinishedButton.tsx'), 'utf8');
+const archiveButton = fs.readFileSync(path.join(root, 'components/ArchiveJobButton.tsx'), 'utf8');
+const deleteButton = fs.readFileSync(path.join(root, 'components/DeleteJobButton.tsx'), 'utf8');
+const dialog = fs.readFileSync(path.join(root, 'lib/dialog.ts'), 'utf8');
+const deleteJob = fs.readFileSync(path.join(root, 'lib/delete-job.ts'), 'utf8');
 const list = fs.readFileSync(path.join(root, 'app/(app)/jobs/index.tsx'), 'utf8');
 const auth = fs.readFileSync(path.join(root, 'contexts/AuthContext.tsx'), 'utf8');
 
@@ -52,7 +62,21 @@ function insertColumns(source, table) {
   return [...match[1].matchAll(/^\s*([a-z_]+)\s*(?:,|:)/gm)].map((found) => found[1]);
 }
 
-const jobs = tableColumns(sql, 'jobs');
+function addedColumns(source, table) {
+  const columns = [];
+  const re = new RegExp(
+    `alter table public\\.${table}[\\s\\S]*?add column if not exists ([a-z_]+)`,
+    'gi'
+  );
+  for (const match of source.matchAll(re)) columns.push(match[1]);
+  return columns;
+}
+
+const jobs = [
+  ...tableColumns(sql, 'jobs'),
+  ...addedColumns(archiveSql, 'jobs'),
+  ...addedColumns(numberSql, 'jobs'),
+];
 const notes = tableColumns(sql, 'job_notes');
 const photos = tableColumns(sql, 'job_photos');
 const profiles = tableColumns(sql, 'profiles');
@@ -62,6 +86,22 @@ assertSubset('jobs detail select', selectColumns(detail, 'jobs'), jobs);
 assertSubset('job_notes select', selectColumns(detail, 'job_notes'), notes);
 assertSubset('job_photos select', selectColumns(detail, 'job_photos'), photos);
 assertSubset('profiles select', selectColumns(auth, 'profiles'), profiles);
+if (!phoneAuth.includes('export function phoneToLoginEmail')) {
+  fail('phone login email mapping must live in lib/phoneAuth.ts');
+}
+if (!phoneAuth.includes('@psg-jobs.app')) fail('phone login must use the psg-jobs.app email domain');
+if (!auth.includes('signInWithPhonePassword') || !auth.includes('phoneToLoginEmail')) {
+  fail('AuthContext must sign in with phone by mapping to email');
+}
+if (!auth.includes('signInWithPassword')) fail('phone login must use signInWithPassword');
+if (!login.includes('Phone number')) fail('login must label the phone field');
+if (!login.includes('signInWithPhonePassword')) fail('login must sign in with phone and password');
+if (login.includes('Send code') || login.includes('E.164') || login.includes('SMS code')) {
+  fail('login must not offer SMS OTP');
+}
+if (login.includes('Sign up') || login.includes('Create account')) {
+  fail('login must not offer public sign up');
+}
 
 const noteInsert = insertColumns(detail, 'job_notes');
 assertSubset('job_notes insert', noteInsert, notes);
@@ -71,8 +111,131 @@ for (const required of ['job_id', 'author_id', 'body']) {
 
 const photoInsert = insertColumns(detail, 'job_photos');
 assertSubset('job_photos insert', photoInsert, photos);
-for (const required of ['job_id', 'storage_path', 'kind', 'created_by']) {
+for (const required of ['job_id', 'storage_path', 'kind', 'created_by', 'caption']) {
   if (!photoInsert.includes(required)) fail(`job_photos insert missing ${required}`);
+}
+if (!detail.includes('captionFromNote')) {
+  fail('photo upload must normalize the note into job_photos.caption');
+}
+if (!detail.includes('Add photo')) fail('job detail must show an Add photo control');
+if (/\bfab:\s*\{/.test(detail)) fail('capture must not stay a bottom-right FAB');
+const headerOptions = detail.match(/navigation\.setOptions\(\{([\s\S]*?)\}\);/);
+if (headerOptions && headerOptions[1].includes('Add photo')) {
+  fail('job detail must not put Add photo in the header; keep the on-page gold button');
+}
+if (!detail.includes('addPhotoBtn') || !detail.includes('addPhotoBtnText')) {
+  fail('job detail must keep the on-page Add photo button');
+}
+if (detail.includes('sheetBefore') || detail.includes('sheetAfter')) {
+  fail('Add photo sheet must not offer before/after category buttons');
+}
+if (detail.includes('BEFORE (start pair)') || detail.includes('AFTER (complete pair)')) {
+  fail('Add photo sheet must not label before/after capture paths');
+}
+if (!detail.includes('Use camera') || !detail.includes('Choose from library')) {
+  fail('Add photo sheet must offer camera and library only');
+}
+if (list.includes('Add photo') || list.includes('addPhoto=1') || list.includes('cardPhotoBtn')) {
+  fail('jobs list must not show Add photo; open the job first');
+}
+if (!list.includes(".is('archived_at', null)")) {
+  fail('jobs list must hide archived jobs');
+}
+if (!list.includes('Archived jobs are hidden')) {
+  fail('jobs list must note that archived jobs are hidden');
+}
+if (!archiveSql.includes('archived_at timestamptz')) {
+  fail('003 must add nullable archived_at on jobs');
+}
+if (!jobs.includes('archived_at')) fail('archived_at must be a jobs column');
+if (!detail.includes('archived_at:') || !detail.includes('confirmArchiveJob') || !detail.includes('ArchiveJobButton')) {
+  fail('job detail must confirm, then set archived_at');
+}
+if (!archiveButton.includes('Archive job')) fail('archive control must be labeled Archive job');
+if (!dialog.includes('globalThis.confirm(')) {
+  fail('web confirm must be called as globalThis.confirm() so Window stays the receiver');
+}
+if (/const\s+\w+\s*=\s*globalThis\.confirm/.test(dialog)) {
+  fail('do not detach window.confirm; calling it without Window throws Illegal invocation');
+}
+if (!dialog.includes('globalThis.alert(')) fail('web messages must use globalThis.alert');
+if (!list.includes('job_number') || !detail.includes('job_number')) {
+  fail('jobs list and detail must select job_number');
+}
+if (!list.includes('formatJobNumber') || !detail.includes('formatJobNumber')) {
+  fail('job number must show on the dashboard card and the job detail screen');
+}
+if (!numberSql.includes('job_number integer')) fail('004 must add job_number');
+if (!numberSql.includes('jobs_job_number_seq')) fail('004 must assign job numbers from a sequence');
+if (!numberSql.includes('jobs_job_number_uidx')) fail('004 must keep job_number unique');
+if (!jobs.includes('job_number')) fail('job_number must be a jobs column');
+if (!detail.includes('confirmDeleteJob') || !detail.includes('deleteJobPermanently') || !detail.includes('DeleteJobButton')) {
+  fail('job detail must confirm, then permanently delete');
+}
+if (!deleteButton.includes('Delete job')) fail('delete control must be labeled Delete job');
+if (!deleteJob.includes(".from('jobs').delete(")) fail('delete must remove the jobs row');
+if (!deleteJob.includes(".from('job_notes').delete(") || !deleteJob.includes(".from('job_photos').delete(")) {
+  fail('delete must remove notes and photos');
+}
+if (!list.includes('>Archived<')) fail('archived jobs must stay reachable so they can be deleted');
+if (!list.includes('buildJobDayColumns')) fail('jobs dashboard must group active jobs into day columns');
+if (!list.includes('horizontal')) fail('day columns must scroll horizontally');
+const jobBoard = fs.readFileSync(path.join(root, 'lib/job-board.ts'), 'utf8');
+if (!jobBoard.includes('created_at')) fail('day columns must group by created_at');
+if (!jobBoard.includes('currentWeekDays')) fail('the board must keep the current week on screen');
+if (!list.includes("headerTitleAlign: 'center'")) fail('Jobs title must be centered in the header');
+const newJobBtn = list.match(/newJobBtn:\s*\{([^}]+)\}/);
+if (!newJobBtn || !newJobBtn[1].includes('backgroundColor: colors.gold') || !newJobBtn[1].includes('paddingVertical: 14')) {
+  fail('jobs list must show a gold New Job button at the top');
+}
+if (!list.includes('>New Job<')) fail('jobs list New Job button must be labeled New Job');
+if (!list.includes('pickManyFromLibrary')) fail('new job must let you pick multiple photos');
+if (!list.includes('uploadJobPhoto')) fail('new job must upload with the job-photos pipeline');
+if (!list.includes("from('job_photos')")) fail('new job must insert job_photos rows');
+if (!list.includes('Uploading photo')) fail('new job must show photo upload progress');
+if (!list.includes('The job was created')) {
+  fail('new job must say the job exists when photo uploads fail');
+}
+if (!finishButton.includes('Mark complete')) fail('photo control must be labeled Mark complete');
+if (finishButton.includes('Job Finished') || detail.includes('Job Finished')) {
+  fail('user-facing Job Finished label must be renamed to Mark complete');
+}
+if (!detail.includes('Upload and mark complete')) fail('confirm button must say Upload and mark complete');
+const appLayout = fs.readFileSync(path.join(root, 'app/(app)/_layout.tsx'), 'utf8');
+if (!appLayout.includes("headerTitleAlign: 'center'")) {
+  fail('app screen titles must be centered in the header');
+}
+if (!detail.includes("headerTitleAlign: 'center'")) {
+  fail('job detail title must be centered, not beside Back');
+}
+if (!detail.includes('‹ Back')) fail('job detail header must show a Back control');
+if (!detail.includes('Open in Google Maps')) fail('job detail must offer Google Maps for the address');
+if (!detail.includes('https://www.google.com/maps/search/?api=1&query=')) {
+  fail('maps must query Google Maps with the property address');
+}
+if (!detail.includes('Linking.openURL')) fail('maps must open with Linking.openURL');
+const addressRow = detail.match(/addressRow:\s*\{([^}]+)\}/);
+if (!addressRow || !addressRow[1].includes("flexDirection: 'row'")) {
+  fail('address and Open in Google Maps must share one row');
+}
+if (!detail.includes("dismissTo('/(app)/jobs')")) fail('Back must return to the jobs list');
+if (detail.includes('>Timeline<')) fail('job detail must not render a Timeline section');
+if (!detail.includes('BeforeAfterPairCard')) fail('each work item must render as a BeforeAfterPair row');
+if (!pairCard.includes('flexDirection: \'row\'')) fail('each work item must be a two-column row');
+if (!pairCard.includes('contentFit="contain"')) fail('photos must show the full image');
+if (pairCard.includes('contentFit="cover"') || detail.includes('contentFit="cover"')) {
+  fail('photos must not crop with cover');
+}
+if (!pairCard.includes('<JobFinishedButton')) {
+  fail('incomplete rows must show Mark complete in the completion column');
+}
+if (detail.includes('width: 110, height: 110')) fail('job photos must not be a thumbnail strip');
+if (detail.includes("height: 220")) fail('job photos must not be full-width heroes');
+if (detail.includes('showsHorizontalScrollIndicator')) fail('job photos must not be a horizontal strip');
+if (detail.includes('buildTimeline')) fail('job detail must not rebuild a photo timeline');
+if (!detail.includes("status: 'done'")) fail('Mark complete must set jobs.status to done');
+if (!detail.includes("kind: 'before'") && !detail.includes('completionTarget')) {
+  fail('Mark complete must link the completion photo to the original');
 }
 if (!detail.includes('storage_path: storagePath')) {
   fail('job_photos insert must persist the uploaded storage path');
@@ -95,6 +258,9 @@ for (const required of ['title', 'property_address', 'status', 'created_by']) {
 const policies = [
   ['001', sql, 'jobs_select_authenticated'],
   ['001', sql, 'jobs_update_authenticated'],
+  ['004', numberSql, 'jobs_delete_authenticated'],
+  ['004', numberSql, 'job_notes_delete_authenticated'],
+  ['004', numberSql, 'job_photos_delete_authenticated'],
   ['001', sql, 'job_notes_select_authenticated'],
   ['001', sql, 'job_notes_insert_authenticated'],
   ['001', sql, 'job_photos_select_authenticated'],

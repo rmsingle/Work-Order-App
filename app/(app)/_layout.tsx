@@ -24,6 +24,7 @@ export default function AppLayout() {
       screenOptions={{
         headerStyle: { backgroundColor: colors.navy },
         headerTintColor: colors.white,
+        headerTitleAlign: 'center',
         headerTitleStyle: { fontWeight: '700' },
         contentStyle: { backgroundColor: colors.offWhite },
       }}

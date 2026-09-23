@@ -13,12 +13,14 @@ export type Profile = {
 
 export type Job = {
   id: string;
+  job_number?: number | null;
   title: string;
   property_address: string | null;
   status: JobStatus;
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  archived_at?: string | null;
 };
 
 export type JobNote = {
