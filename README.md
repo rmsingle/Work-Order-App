@@ -16,7 +16,7 @@ CompanyCam-style MVP: **photos are the primary artifact** on each job (GPS + tim
 | Email sign-in | Working as a secondary option. The login screen does not offer public sign-up |
 | Session persistence | Working (AsyncStorage / localStorage) |
 | Sign out | Working |
-| Jobs list (centered title, address, status, updated_at, pull-to-refresh, empty state) | Working — gold **New Job** at the top; no Add photo on the cards |
+| Jobs list (day columns, job number, address, status, pull-to-refresh) | Working — gold **New Job** at the top. Active jobs sit in columns by the local day of `created_at`. The current week stays visible, including empty days. Archived jobs stay below the board |
 | New Job (title + property address + photos) | Working — gold button opens the sheet; photos upload to `job-photos` after the job row exists |
 | Job detail — centered header title, two-column rows, Open in Google Maps beside the address | Working |
 | Fast Capture (camera / library) | Working — uploads to Storage and sets `storage_path` |
@@ -43,7 +43,7 @@ app/
   index.tsx                 # session redirect or Configure Supabase
   (auth)/login.tsx          # phone + password (email as a fallback)
   (app)/_layout.tsx         # auth gate + stack
-  (app)/jobs/index.tsx      # jobs dashboard + New Job
+  (app)/jobs/index.tsx      # day-column jobs dashboard + New Job
   (app)/jobs/[id].tsx       # photo-first detail + Add photo at the top
 components/                 # ConfigureSupabase, StatusBadge, BeforeAfterPair, ArchiveJobButton, DeleteJobButton
 contexts/AuthContext.tsx
@@ -195,7 +195,7 @@ Email confirmation and auth redirects use that list. Without it, a link in an em
 ## Schema (summary)
 
 - **profiles** — `id` = `auth.users.id`, `full_name`, `phone`, `role` (`owner_admin` \| `employee` \| `customer`)
-- **jobs** — `job_number` (stable `#N`), title, property_address, status (`open` \| `in_progress` \| `done` \| `cancelled`), created_by, timestamps, `archived_at` (null = on the active dashboard). The app selects active jobs (`archived_at` is null) and archived jobs separately. Insert sends `title`, `property_address`, `status`, `created_by`; the database assigns the next `job_number`. Archive sets `archived_at`. Delete removes the row after confirm
+- **jobs** — `job_number` (stable `#N`), title, property_address, status (`open` \| `in_progress` \| `done` \| `cancelled`), created_by, timestamps, `archived_at` (null = on the active dashboard). There is no scheduled or due date. The Jobs screen groups active jobs by the local calendar day of `created_at` and always shows the current Monday–Sunday week. Insert sends `title`, `property_address`, `status`, `created_by`; the database assigns the next `job_number`. Archive sets `archived_at`. Delete removes the row after confirm
 - **job_notes** — job_id, author_id, body, created_at. The app selects and inserts notes. It does not edit or delete them
 - **job_photos** — job_id, storage_path (bucket object key), local_uri (legacy only), lat, lng, caption, kind (`before`|`after`|`general`), pair_id, created_by, created_at. Capture inserts `storage_path` and leaves `local_uri` null
 - **storage** — private bucket `job-photos` (`002_storage_job_photos.sql`). After `002`, add the four `job_photos_storage_*` policies in **Dashboard → Storage → Policies** (authenticated select/insert/update/delete on that bucket only). Display uses 1-hour signed URLs

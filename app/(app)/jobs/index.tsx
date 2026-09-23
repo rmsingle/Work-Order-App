@@ -1,7 +1,6 @@
 import { useCallback, useLayoutEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
   Modal,
   Platform,
   Pressable,
@@ -21,6 +20,7 @@ import { captureFromCamera, pickManyFromLibrary } from '@/lib/photos';
 import { captionFromNote } from '@/lib/photo-storage';
 import { removeJobPhoto, uploadJobPhoto } from '@/lib/storage';
 import { showMessage } from '@/lib/dialog';
+import { buildJobDayColumns, formatBoardRange } from '@/lib/job-board';
 import { formatJobNumber, isMissingJobNumberColumn } from '@/lib/job-number';
 import { getSupabase } from '@/lib/supabase';
 import type { Job } from '@/lib/types';
@@ -66,18 +66,20 @@ export function JobListCard({
   updatedLabel,
   status,
   onOpen,
+  compact,
 }: {
   jobNumber: number | null | undefined;
   title: string;
   address: string | null;
-  updatedLabel: string;
+  updatedLabel?: string;
   status: Job['status'];
   onOpen: () => void;
+  compact?: boolean;
 }) {
   const numberLabel = formatJobNumber(jobNumber);
   return (
     <Pressable
-      style={styles.card}
+      style={[styles.card, compact && styles.cardCompact]}
       onPress={onOpen}
       accessibilityRole="button"
       accessibilityLabel={numberLabel ? `Open job ${numberLabel} ${title}` : `Open ${title}`}
@@ -96,7 +98,7 @@ export function JobListCard({
       <Text style={styles.address} numberOfLines={2}>
         {address || 'No address'}
       </Text>
-      <Text style={styles.meta}>Updated {updatedLabel}</Text>
+      {updatedLabel ? <Text style={styles.meta}>Updated {updatedLabel}</Text> : null}
     </Pressable>
   );
 }
@@ -116,7 +118,10 @@ export default function JobsListScreen() {
   const [draftPhotos, setDraftPhotos] = useState<DraftJobPhoto[]>([]);
   const [createStatus, setCreateStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const { height: windowHeight } = useWindowDimensions();
+  const { height: windowHeight, width: windowWidth } = useWindowDimensions();
+  const columnWidth = Math.max(200, Math.min(260, Math.floor((windowWidth - 32) / 4)));
+  const dayColumns = buildJobDayColumns(jobs);
+  const boardRange = formatBoardRange(dayColumns);
   const web = Platform.OS === 'web';
 
   const load = useCallback(async () => {
@@ -332,8 +337,8 @@ export default function JobsListScreen() {
           {profile?.full_name ? `Hi, ${profile.full_name}` : 'PSG jobs'}
         </Text>
         <Text style={styles.helloSub}>
-          Open a job to add photos and notes. Archived jobs are hidden from this list and shown
-          below.
+          Open a job to add photos and notes. Active jobs are grouped by the day they were created.
+          Archived jobs are hidden from this list and shown below.
         </Text>
       </View>
 
@@ -344,9 +349,9 @@ export default function JobsListScreen() {
         </Pressable>
       ) : null}
 
-      <FlatList
-        data={jobs}
-        keyExtractor={(item) => item.id}
+      <ScrollView
+        style={styles.boardScroll}
+        contentContainerStyle={styles.boardScrollContent}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -357,58 +362,69 @@ export default function JobsListScreen() {
             tintColor={colors.navy}
           />
         }
-        contentContainerStyle={jobs.length === 0 ? styles.emptyWrap : styles.list}
-        ListEmptyComponent={
-          archivedJobs.length > 0 ? (
-            <View style={styles.empty}>
-              <Text style={styles.emptyTitle}>No active jobs</Text>
-              <Text style={styles.emptyBody}>Archived jobs are hidden from this list and shown below.</Text>
+      >
+        <Text style={styles.boardRange}>{boardRange}</Text>
+        {jobs.length === 0 ? (
+          <Text style={styles.boardEmpty}>
+            {archivedJobs.length > 0
+              ? 'No active jobs. Archived jobs are hidden from this list and shown below.'
+              : 'No jobs yet. Tap New Job above to create one. Empty days this week stay on the board.'}
+          </Text>
+        ) : null}
+        <ScrollView
+          horizontal
+          nestedScrollEnabled
+          showsHorizontalScrollIndicator
+          style={[styles.dayScroller, { width: windowWidth }]}
+          contentContainerStyle={styles.boardContent}
+        >
+          {dayColumns.map((column) => (
+            <View key={column.key} style={[styles.column, { width: columnWidth }]}>
+              <View style={styles.columnHeader}>
+                <Text style={styles.colWeekday}>{column.weekday}</Text>
+                <Text style={styles.colDay}>{column.dayNum}</Text>
+                <Text style={[styles.colMonth, column.isToday && styles.todayPill]}>
+                  {column.isToday ? 'Today' : column.monthLabel}
+                </Text>
+              </View>
+              {column.jobs.length === 0 ? (
+                <Text style={styles.columnEmpty}>No jobs</Text>
+              ) : (
+                column.jobs.map((item) => (
+                  <JobListCard
+                    key={item.id}
+                    compact
+                    jobNumber={item.job_number}
+                    title={item.title}
+                    address={item.property_address}
+                    status={item.status}
+                    onOpen={() => router.push(`/(app)/jobs/${item.id}`)}
+                  />
+                ))
+              )}
             </View>
-          ) : (
-            <View style={styles.empty}>
-              <Text style={styles.emptyTitle}>No jobs yet</Text>
-              <Text style={styles.emptyBody}>
-                Tap New Job above to create a job with a title, address, and photos, or run the SQL
-                seed. Pull to refresh.
-              </Text>
-              <Pressable style={styles.newBtn} onPress={() => setNewOpen(true)}>
-                <Text style={styles.newBtnText}>New Job</Text>
-              </Pressable>
-            </View>
-          )
-        }
-        ListFooterComponent={
-          archivedJobs.length > 0 ? (
-            <View style={styles.archivedBlock}>
-              <Text style={styles.archivedTitle}>Archived</Text>
-              <Text style={styles.archivedHint}>
-                These jobs are off the active list. Open one to delete it.
-              </Text>
-              {archivedJobs.map((item) => (
-                <JobListCard
-                  key={item.id}
-                  jobNumber={item.job_number}
-                  title={item.title}
-                  address={item.property_address}
-                  updatedLabel={formatWhen(item.updated_at)}
-                  status={item.status}
-                  onOpen={() => router.push(`/(app)/jobs/${item.id}`)}
-                />
-              ))}
-            </View>
-          ) : null
-        }
-        renderItem={({ item }) => (
-          <JobListCard
-            jobNumber={item.job_number}
-            title={item.title}
-            address={item.property_address}
-            updatedLabel={formatWhen(item.updated_at)}
-            status={item.status}
-            onOpen={() => router.push(`/(app)/jobs/${item.id}`)}
-          />
-        )}
-      />
+          ))}
+        </ScrollView>
+        {archivedJobs.length > 0 ? (
+          <View style={styles.archivedBlock}>
+            <Text style={styles.archivedTitle}>Archived</Text>
+            <Text style={styles.archivedHint}>
+              These jobs are off the active list. Open one to delete it.
+            </Text>
+            {archivedJobs.map((item) => (
+              <JobListCard
+                key={item.id}
+                jobNumber={item.job_number}
+                title={item.title}
+                address={item.property_address}
+                updatedLabel={formatWhen(item.updated_at)}
+                status={item.status}
+                onOpen={() => router.push(`/(app)/jobs/${item.id}`)}
+              />
+            ))}
+          </View>
+        ) : null}
+      </ScrollView>
 
       <Modal visible={newOpen} transparent animationType="slide" onRequestClose={closeNewJob}>
         <View style={styles.sheetBackdrop}>
@@ -553,6 +569,42 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   newBtnText: { color: colors.navy, fontWeight: '900' },
+  boardScroll: { flex: 1 },
+  boardScrollContent: { paddingBottom: spacing.xl },
+  boardRange: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+    color: colors.navy,
+    fontWeight: '800',
+    fontSize: 16,
+  },
+  boardEmpty: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+    color: colors.muted,
+    lineHeight: 20,
+  },
+  dayScroller: { flexGrow: 0 },
+  boardContent: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
+    alignItems: 'flex-start',
+  },
+  column: { marginRight: spacing.sm },
+  columnHeader: { alignItems: 'center', marginBottom: spacing.sm, paddingBottom: spacing.xs },
+  colWeekday: { color: colors.muted, fontWeight: '700', fontSize: 13 },
+  colDay: { color: colors.navy, fontWeight: '900', fontSize: 28, lineHeight: 32 },
+  colMonth: { color: colors.navyMid, fontWeight: '700', fontSize: 12 },
+  todayPill: {
+    color: colors.navy,
+    backgroundColor: colors.gold,
+    overflow: 'hidden',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    fontWeight: '800',
+  },
+  columnEmpty: { color: colors.muted, textAlign: 'center', paddingVertical: spacing.md },
   card: {
     backgroundColor: colors.white,
     borderRadius: 14,
@@ -561,6 +613,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     marginBottom: spacing.sm,
   },
+  cardCompact: { padding: spacing.sm },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: spacing.sm },
   numberBadge: {
     backgroundColor: colors.navy,
@@ -570,7 +623,7 @@ const styles = StyleSheet.create({
   },
   numberText: { color: colors.gold, fontWeight: '900', fontSize: 16 },
   cardTitle: { flex: 1, fontSize: 16, fontWeight: '800', color: colors.navy },
-  archivedBlock: { marginTop: spacing.lg },
+  archivedBlock: { marginTop: spacing.lg, paddingHorizontal: spacing.md },
   archivedTitle: { fontSize: 16, fontWeight: '800', color: colors.navy, marginBottom: 4 },
   archivedHint: { color: colors.muted, marginBottom: spacing.sm, lineHeight: 18 },
   address: { marginTop: spacing.sm, color: colors.navyMid },

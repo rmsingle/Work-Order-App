@@ -178,6 +178,11 @@ if (!deleteJob.includes(".from('job_notes').delete(") || !deleteJob.includes(".f
   fail('delete must remove notes and photos');
 }
 if (!list.includes('>Archived<')) fail('archived jobs must stay reachable so they can be deleted');
+if (!list.includes('buildJobDayColumns')) fail('jobs dashboard must group active jobs into day columns');
+if (!list.includes('horizontal')) fail('day columns must scroll horizontally');
+const jobBoard = fs.readFileSync(path.join(root, 'lib/job-board.ts'), 'utf8');
+if (!jobBoard.includes('created_at')) fail('day columns must group by created_at');
+if (!jobBoard.includes('currentWeekDays')) fail('the board must keep the current week on screen');
 if (!list.includes("headerTitleAlign: 'center'")) fail('Jobs title must be centered in the header');
 const newJobBtn = list.match(/newJobBtn:\s*\{([^}]+)\}/);
 if (!newJobBtn || !newJobBtn[1].includes('backgroundColor: colors.gold') || !newJobBtn[1].includes('paddingVertical: 14')) {
