@@ -185,9 +185,9 @@ export function formatDayTitle(date: Date): string {
 }
 
 /**
- * Widest the jobs board and job page grow on a laptop.
- * A 1280px window then keeps about 40px of gutter on each side — half of the
- * previous 80px gutters — instead of stretching the week wall to wall.
+ * Width where a hard cap used to stop the jobs board and job page.
+ * Wider windows used to dump the rest into side gutters. The frame now keeps
+ * growing with the viewport, and each side gutter is about half of that leftover.
  */
 export const BOARD_MAX_WIDTH = 1200;
 
@@ -210,7 +210,7 @@ const WEEK_DAY_COUNT = 7;
 export type BoardChrome = {
   /** All seven days are on screen together. */
   fitWeek: boolean;
-  /** Centered shell width. Full viewport below {@link WEEK_FIT_MIN_WIDTH}. */
+  /** Centered shell width. Fills the window through {@link BOARD_MAX_WIDTH}, then keeps a halved side gutter. */
   frameWidth: number;
   /** Readable column width while the week is a horizontal scroller (phones). */
   scrollColumnWidth: number;
@@ -220,7 +220,8 @@ export type BoardChrome = {
 
 /**
  * Empty space on one side of the centered frame.
- * Zero when the frame already fills the window (phones, and laptops at or under the max width).
+ * Zero on phones and at or under {@link BOARD_MAX_WIDTH}. Wider windows keep
+ * about half the gutter a hard 1200px cap would have left.
  */
 export function sideGutter(windowWidth: number): number {
   const width = Math.max(0, Math.floor(windowWidth));
@@ -237,10 +238,21 @@ export function headerControlInset(windowWidth: number): number {
   return sideGutter(windowWidth) + Math.max(0, BOARD_SECTION_INSET - HEADER_BUTTON_PAD);
 }
 
+/**
+ * Frame width once the week fits on one row.
+ * Up through {@link BOARD_MAX_WIDTH} the frame fills the window. Past that,
+ * each side gutter is about half of `(width - BOARD_MAX_WIDTH) / 2`.
+ */
+function grownFrameWidth(width: number): number {
+  if (width <= BOARD_MAX_WIDTH) return width;
+  const gutter = Math.floor((width - BOARD_MAX_WIDTH) / 4);
+  return width - gutter * 2;
+}
+
 export function boardChrome(windowWidth: number): BoardChrome {
   const width = Math.max(0, Math.floor(windowWidth));
   const fitWeek = width >= WEEK_FIT_MIN_WIDTH;
-  const frameWidth = fitWeek ? Math.min(BOARD_MAX_WIDTH, width) : width;
+  const frameWidth = fitWeek ? grownFrameWidth(width) : width;
   const slots = width >= 700 ? 2.2 : 1.7;
   const scrollColumnWidth = Math.max(
     168,
