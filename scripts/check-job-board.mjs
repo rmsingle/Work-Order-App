@@ -155,7 +155,6 @@ assert.equal(
 function assertWeekFits(windowWidth) {
   const chrome = boardChrome(windowWidth);
   assert.equal(chrome.fitWeek, true);
-  assert.ok(chrome.frameWidth <= BOARD_MAX_WIDTH);
   assert.ok(chrome.frameWidth <= windowWidth);
   assert.ok(windowWidth - chrome.frameWidth >= 0);
   const column = fittedWeekColumnWidth(chrome.innerWidth);
@@ -171,11 +170,39 @@ function assertWeekFits(windowWidth) {
   return { chrome, column };
 }
 
+/** Gutter one side would have had when the frame stopped at {@link BOARD_MAX_WIDTH}. */
+function cappedSideGutter(windowWidth) {
+  return Math.max(0, Math.floor((windowWidth - BOARD_MAX_WIDTH) / 2));
+}
+
+function assertGuttersHalved(windowWidth) {
+  const chrome = boardChrome(windowWidth);
+  const previous = cappedSideGutter(windowWidth);
+  const gutter = sideGutter(windowWidth);
+  assert.equal(chrome.fitWeek, true);
+  assert.equal(gutter, Math.floor(previous / 2), `${windowWidth}px side gutter is about half of ${previous}px`);
+  assert.ok(gutter > 0, `${windowWidth}px keeps a side gutter`);
+  assert.ok(chrome.frameWidth < windowWidth, `${windowWidth}px is not edge to edge`);
+  assert.ok(chrome.frameWidth > BOARD_MAX_WIDTH, `${windowWidth}px frame grows past the old cap`);
+  assert.equal(chrome.frameWidth, windowWidth - gutter * 2);
+  assert.equal(headerControlInset(windowWidth), gutter + BOARD_SECTION_INSET - HEADER_BUTTON_PAD);
+  assert.equal(headerControlInset(windowWidth) + HEADER_BUTTON_PAD, gutter + BOARD_SECTION_INSET);
+  const sixDay = fittedWeekColumnWidth(chrome.innerWidth, WEEK_COLUMN_GAP, 6);
+  const cappedSixDay = fittedWeekColumnWidth(
+    BOARD_MAX_WIDTH - BOARD_SECTION_INSET * 2,
+    WEEK_COLUMN_GAP,
+    6
+  );
+  assert.ok(sixDay > cappedSixDay, `${windowWidth}px Monday–Saturday columns are wider than the 1200px cap`);
+  const row = sixDay * 6 + WEEK_COLUMN_GAP * 5;
+  assert.ok(row <= chrome.innerWidth, `${windowWidth}px week row ${row} exceeds inner ${chrome.innerWidth}`);
+  return { chrome, gutter, sixDay };
+}
+
 const laptop = assertWeekFits(1280);
-assert.equal(laptop.chrome.frameWidth, BOARD_MAX_WIDTH);
-assert.equal(laptop.chrome.frameWidth, 1200);
+assert.equal(laptop.chrome.frameWidth, 1240);
 const laptopGutter = sideGutter(1280);
-assert.equal(laptopGutter, 40, '1280px viewport keeps about 40px side gutters');
+assert.equal(laptopGutter, 20, '1280px side gutters are half of the old 40px');
 assert.ok(laptopGutter > 0, 'side columns stay visible');
 assert.equal(headerControlInset(1280), laptopGutter + BOARD_SECTION_INSET - HEADER_BUTTON_PAD);
 assert.equal(headerControlInset(1280) + HEADER_BUTTON_PAD, laptopGutter + BOARD_SECTION_INSET);
@@ -184,19 +211,31 @@ const sixDayColumn = fittedWeekColumnWidth(laptop.chrome.innerWidth, WEEK_COLUMN
 const sixDayRow = sixDayColumn * 6 + WEEK_COLUMN_GAP * 5;
 assert.ok(sixDayRow <= laptop.chrome.innerWidth, 'Monday–Saturday still fits the centered frame');
 assert.ok(sixDayColumn > laptop.column, 'hiding Sunday gives each day a wider card');
+assert.ok(
+  sixDayColumn > fittedWeekColumnWidth(BOARD_MAX_WIDTH - BOARD_SECTION_INSET * 2, WEEK_COLUMN_GAP, 6),
+  '1280px day columns are wider than the old 1200px cap'
+);
 
-const wide = assertWeekFits(1440);
-assert.equal(wide.chrome.frameWidth, BOARD_MAX_WIDTH);
-assert.equal(wide.column, laptop.column, 'wider than the max, the board stays the same width');
-assert.ok(1440 - wide.chrome.frameWidth >= 200);
+const wide = assertGuttersHalved(1440);
+assert.equal(wide.gutter, 60);
+assert.equal(wide.chrome.frameWidth, 1320);
+assert.ok(wide.sixDay > sixDayColumn, 'a wider window grows the day columns');
+
+for (const width of [1512, 1680, 1728, 1920, 2560]) {
+  const sample = assertGuttersHalved(width);
+  assert.ok(sample.sixDay > wide.sixDay, `${width}px columns keep growing with the window`);
+}
 
 assertWeekFits(1366);
 const narrowLaptop = assertWeekFits(WEEK_FIT_MIN_WIDTH);
+assert.equal(narrowLaptop.chrome.frameWidth, WEEK_FIT_MIN_WIDTH);
+assert.equal(sideGutter(WEEK_FIT_MIN_WIDTH), 0);
 assert.ok(narrowLaptop.column >= 110, 'columns compress instead of overflowing just below a laptop width');
 
-assert.equal(sideGutter(1200), 0, 'at the max width the frame fills the window');
+assert.equal(sideGutter(1200), 0, 'at 1200px the frame fills the window');
+assert.equal(boardChrome(1200).frameWidth, BOARD_MAX_WIDTH);
 assert.equal(headerControlInset(390), BOARD_SECTION_INSET - HEADER_BUTTON_PAD);
-assert.equal(sideGutter(1440), (1440 - BOARD_MAX_WIDTH) / 2);
+assert.equal(sideGutter(1440), Math.floor((1440 - BOARD_MAX_WIDTH) / 4));
 
 for (const width of [390, 768, WEEK_FIT_MIN_WIDTH - 1]) {
   const chrome = boardChrome(width);
