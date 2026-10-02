@@ -190,7 +190,7 @@ export function formatDayTitle(date: Date): string {
  */
 export const BOARD_MAX_WIDTH = 1120;
 
-/** At this window width and above, Monday–Sunday share one row (no horizontal scroll). */
+/** At this window width and above, the visible week days share one row (no horizontal scroll). */
 export const WEEK_FIT_MIN_WIDTH = 960;
 
 export const WEEK_COLUMN_GAP = 10;
@@ -228,10 +228,27 @@ export function boardChrome(windowWidth: number): BoardChrome {
   };
 }
 
-/** Equal day-column width inside a fitted week row, including the gaps between columns. */
-export function fittedWeekColumnWidth(innerWidth: number, gap = WEEK_COLUMN_GAP): number {
-  const budget = Math.max(0, Math.floor(innerWidth) - gap * (WEEK_DAY_COUNT - 1));
-  return Math.floor(budget / WEEK_DAY_COUNT);
+/**
+ * Equal day-column width inside a fitted week row, including the gaps between columns.
+ * `dayCount` is 6 for the Monday–Saturday board and 7 when Sunday is shown.
+ */
+export function fittedWeekColumnWidth(
+  innerWidth: number,
+  gap = WEEK_COLUMN_GAP,
+  dayCount = WEEK_DAY_COUNT
+): number {
+  const days = Math.max(1, Math.floor(dayCount));
+  const budget = Math.max(0, Math.floor(innerWidth) - gap * (days - 1));
+  return Math.floor(budget / days);
+}
+
+/** Week board columns. Sunday stays off unless `showSunday` is set. The month grid is unchanged. */
+export function visibleWeekColumns<T extends BoardJob>(
+  columns: DayColumn<T>[],
+  showSunday = false
+): DayColumn<T>[] {
+  if (showSunday) return columns;
+  return columns.filter((column) => column.date.getDay() !== 0);
 }
 
 /**
@@ -251,9 +268,14 @@ export function splitRowWidths(total: number, count: number, outsetPerCell = 0):
 }
 
 export type JobCardFace = {
+  /** Trade or scope, from the title after the dash. */
   task: string;
+  /** Unit label parsed from the title, or the property name when the title has no unit. */
   unit: string;
+  /** Short property name, such as Northcliffe. */
   place: string;
+  /** Real slice of `property_address`. Includes the unit when the address has one. */
+  address: string;
 };
 
 function propertyPlace(address: string | null | undefined, title: string): string {
@@ -263,12 +285,37 @@ function propertyPlace(address: string | null | undefined, title: string): strin
   return first || 'PSG';
 }
 
-/** RentReady-style card lines: task, unit, property. Parsed from the job title. */
+function tidyUnit(match: string): string {
+  return match.replace(/\s+/g, ' ').replace(/^unit/i, 'Unit');
+}
+
+/**
+ * Short real slice of the property address so same-property jobs still differ.
+ * "Northcliffe Forest Apartments Unit 1103, Winston-Salem, NC" → "Unit 1103, Winston-Salem".
+ */
+function addressSnippet(address: string | null | undefined): string {
+  const raw = address?.trim() ?? '';
+  if (!raw) return '';
+  const parts = raw.split(',').map((part) => part.trim()).filter(Boolean);
+  const unitMatch = raw.match(/\bunit\s+[A-Za-z0-9-]+\b/i);
+  const unit = unitMatch ? tidyUnit(unitMatch[0]) : '';
+  const state = parts.length >= 2 && /^[A-Za-z]{2}$/.test(parts[parts.length - 1]) ? parts[parts.length - 1] : '';
+  const city = state ? parts[parts.length - 2] : '';
+  if (unit && city && !/^unit\b/i.test(city)) return `${unit}, ${city}`;
+  if (unit && parts.length >= 2 && !/^unit\b/i.test(parts[0])) return `${parts[0]}, ${unit}`;
+  if (unit) return unit;
+  if (state && city) return `${parts[0]}, ${city}`;
+  if (parts.length >= 2) return `${parts[0]}, ${parts[1]}`;
+  return parts[0] ?? raw;
+}
+
+/** Card lines from the job title and address: scope, unit, property, address snippet. */
 export function jobCardFace(job: { title: string; property_address?: string | null }): JobCardFace {
   const place = propertyPlace(job.property_address, job.title);
+  const address = addressSnippet(job.property_address) || place;
   const titled = job.title.match(/^(.*?)\s+[—–-]\s+(.+)$/);
   if (!titled) {
-    return { task: job.title, unit: place, place };
+    return { task: job.title, unit: place, place, address };
   }
   const head = titled[1].trim();
   const task = titled[2].trim();
@@ -277,5 +324,6 @@ export function jobCardFace(job: { title: string; property_address?: string | nu
     task,
     unit: unitMatch ? `Unit ${unitMatch[1].trim()}` : head,
     place,
+    address,
   };
 }

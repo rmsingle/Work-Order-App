@@ -15,6 +15,7 @@ import {
   jobCardFace,
   localDayKey,
   splitRowWidths,
+  visibleWeekColumns,
 } from '../lib/job-board.ts';
 
 const now = new Date(2026, 8, 23, 15, 30, 0);
@@ -96,6 +97,14 @@ assert.deepEqual(
   ['friday']
 );
 
+const visible = visibleWeekColumns(columns);
+assert.equal(visible.length, 6);
+assert.ok(visible.every((column) => column.date.getDay() !== 0));
+assert.equal(visible[0].key, '2026-09-21');
+assert.equal(visible[5].key, '2026-09-26');
+assert.equal(formatBoardRange(visible), 'Sep 21–26, 2026');
+assert.equal(visibleWeekColumns(columns, true).length, 7);
+
 const face = jobCardFace({
   title: 'NC Unit 1103 — paint + vinyl',
   property_address: 'Northcliffe Forest Apartments Unit 1103, Winston-Salem, NC',
@@ -103,6 +112,41 @@ const face = jobCardFace({
 assert.equal(face.task, 'paint + vinyl');
 assert.equal(face.unit, 'Unit 1103');
 assert.equal(face.place, 'Northcliffe');
+assert.equal(face.address, 'Unit 1103, Winston-Salem');
+
+const other = jobCardFace({
+  title: 'NC Unit 1019 — cabinets + vents',
+  property_address: 'Northcliffe Forest Apartments Unit 1019, Winston-Salem, NC',
+});
+assert.equal(other.unit, 'Unit 1019');
+assert.equal(other.task, 'cabinets + vents');
+assert.equal(other.address, 'Unit 1019, Winston-Salem');
+assert.notEqual(face.unit, other.unit);
+assert.notEqual(face.task, other.task);
+assert.notEqual(face.address, other.address);
+
+const walk = jobCardFace({
+  title: 'NC — verify units called complete',
+  property_address: 'Northcliffe Forest Apartments, Winston-Salem, NC',
+});
+assert.equal(walk.unit, 'NC');
+assert.equal(walk.task, 'verify units called complete');
+assert.equal(walk.address, 'Northcliffe Forest Apartments, Winston-Salem');
+
+assert.equal(
+  jobCardFace({
+    title: 'CGC 1612 — double door + lock',
+    property_address: '1600 N Main Street, Unit 1612, High Point, NC',
+  }).address,
+  'Unit 1612, High Point'
+);
+assert.equal(
+  jobCardFace({
+    title: 'Wachovia 322 — pull-cord lights',
+    property_address: 'Wachovia House, Unit 322',
+  }).address,
+  'Wachovia House, Unit 322'
+);
 
 function assertWeekFits(windowWidth) {
   const chrome = boardChrome(windowWidth);
@@ -127,6 +171,10 @@ const laptop = assertWeekFits(1280);
 assert.equal(laptop.chrome.frameWidth, BOARD_MAX_WIDTH);
 assert.ok(1280 - laptop.chrome.frameWidth >= 64, '1280px viewport keeps side gutters');
 assert.ok(laptop.column >= 140, 'day columns stay readable at 1280');
+const sixDayColumn = fittedWeekColumnWidth(laptop.chrome.innerWidth, WEEK_COLUMN_GAP, 6);
+const sixDayRow = sixDayColumn * 6 + WEEK_COLUMN_GAP * 5;
+assert.ok(sixDayRow <= laptop.chrome.innerWidth, 'Monday–Saturday still fits the centered frame');
+assert.ok(sixDayColumn > laptop.column, 'hiding Sunday gives each day a wider card');
 
 const wide = assertWeekFits(1440);
 assert.equal(wide.chrome.frameWidth, BOARD_MAX_WIDTH);
@@ -160,6 +208,17 @@ assert.match(boardSource, /onOpenDay/);
 assert.match(boardSource, /Open \$\{formatDayTitle/);
 assert.match(boardSource, /overflow: shellOverflow/);
 assert.match(boardSource, /'clip' as 'hidden'/);
+assert.match(boardSource, /visibleWeekColumns/);
+assert.match(boardSource, /showSunday/);
+assert.match(boardSource, /Show Sun/);
+assert.match(boardSource, /face\.address/);
+assert.match(boardSource, /const \[showSunday, setShowSunday\] = useState\(false\)/);
 assert.doesNotMatch(boardSource, /flex: \{ flex: 1, backgroundColor: colors\.offWhite, width: '100%', overflow: 'hidden' \}/);
+
+const detailSource = fs.readFileSync(new URL('../app/(app)/jobs/[id].tsx', import.meta.url), 'utf8');
+assert.match(detailSource, /boardChrome/);
+assert.match(detailSource, /frameWidth/);
+assert.match(detailSource, /styles\.detailFrame/);
+assert.match(detailSource, /\[styles\.sheet, frameStyle\]/);
 
 console.log('week and month boards group by scheduled_on');

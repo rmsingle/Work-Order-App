@@ -19,7 +19,7 @@ Production site: [https://psg-job-tracker-psg9.vercel.app](https://psg-job-track
 3. **Load current jobs** in the Supabase SQL Editor, after `001`–`004` if those are not already applied:
    - `supabase/migrations/005_jobs_scheduled_on.sql` (board date, invoice label, seed key)
    - `supabase/migrations/006_seed_current_work.sql` (Northcliffe units + open follow-ups)
-4. Open **Jobs**. The home screen is a **week at a glance** (Monday–Sunday columns, prev/next, Today, Week | Month). The week of Sep 28–Oct 4, 2026 is filled with active Northcliffe work, including Friday Oct 2. Done paint on 708 and 912 stays on Sep 14–15; use the arrows to see that week.
+4. Open **Jobs**. The home screen is a **week at a glance** (Monday–Saturday columns, prev/next, Today, Week | Month, and **Show Sun** when a Sunday column is needed). The week of Sep 28–Oct 3, 2026 is filled with active Northcliffe work, including Friday Oct 2. Done paint on 708 and 912 stays on Sep 14–15; use the arrows to see that week. Job cards are wide rectangles showing the unit, scope, address snippet, status, and job number. A job page uses the same centered width as the board.
 
 If you have a Postgres URL locally, `SUPABASE_DB_URL="postgresql://..." npm run seed` runs `005` then `006` with `psql`. Otherwise paste the two files. Re-running `006` updates those rows and replaces notes that start with `Seed:`. Notes added in the app stay.
 
@@ -33,7 +33,7 @@ The seed does not add the giveaway that is not a work order, and it does not add
 | Email sign-in | Working as a secondary option. The login screen does not offer public sign-up |
 | Session persistence | Working (AsyncStorage / localStorage) |
 | Sign out | Working |
-| Jobs home (week at a glance, month grid, job number, status) | Working — gold **New Job** at the top. **Week** is the default: Monday–Sunday columns, prev/next, Today. **Month** is the same jobs on a calendar. A job uses `scheduled_on` when set, otherwise the local day of `created_at`. Cards have no Add photo. Archived jobs stay below the board |
+| Jobs home (week at a glance, month grid, job number, status) | Working — gold **New Job** at the top. **Week** is the default: Monday–Saturday columns, prev/next, Today, and **Show Sun** to add Sunday. **Month** is the same jobs on a full calendar. A job uses `scheduled_on` when set, otherwise the local day of `created_at`. Cards are horizontal rectangles (unit, scope, address snippet, status, job number) and have no Add photo. Archived jobs stay below the board. The job page stays inside the same centered frame |
 | New Job (title + property address + photos) | Working — gold button opens the sheet; photos upload to `job-photos` after the job row exists |
 | Job detail — centered header title, two-column rows, Open in Google Maps beside the address | Working |
 | Fast Capture (camera / library) | Working — uploads to Storage and sets `storage_path` |
@@ -216,7 +216,7 @@ Email confirmation and auth redirects use that list. Without it, a link in an em
 ## Schema (summary)
 
 - **profiles** — `id` = `auth.users.id`, `full_name`, `phone`, `role` (`owner_admin` \| `employee` \| `customer`)
-- **jobs** — `job_number` (stable `#N`), title, property_address, status (`open` shows as Pending \| `in_progress` \| `done` shows as Completed \| `cancelled`), created_by, timestamps, `archived_at` (null = on the active dashboard), `scheduled_on` (board day), `invoice_ref`, `seed_key`. The Jobs home is a Monday–Sunday week, with a Month grid on the same data. A set `scheduled_on` wins; otherwise the card uses the local day of `created_at`. New Job sets `scheduled_on` to today. Insert sends `title`, `property_address`, `status`, `created_by`, `scheduled_on`; the database assigns the next `job_number`. Archive sets `archived_at`. Delete removes the row after confirm
+- **jobs** — `job_number` (stable `#N`), title, property_address, status (`open` shows as Pending \| `in_progress` \| `done` shows as Completed \| `cancelled`), created_by, timestamps, `archived_at` (null = on the active dashboard), `scheduled_on` (board day), `invoice_ref`, `seed_key`. The Jobs home week is Monday–Saturday by default (Show Sun adds Sunday), with a Month grid on the same data. A set `scheduled_on` wins; otherwise the card uses the local day of `created_at`. New Job sets `scheduled_on` to today. Insert sends `title`, `property_address`, `status`, `created_by`, `scheduled_on`; the database assigns the next `job_number`. Archive sets `archived_at`. Delete removes the row after confirm
 - **job_notes** — job_id, author_id, body, created_at. The app selects and inserts notes. It does not edit or delete them
 - **job_photos** — job_id, storage_path (bucket object key), local_uri (legacy only), lat, lng, caption, kind (`before`|`after`|`general`), pair_id, created_by, created_at. Capture inserts `storage_path` and leaves `local_uri` null
 - **storage** — private bucket `job-photos` (`002_storage_job_photos.sql`). After `002`, add the four `job_photos_storage_*` policies in **Dashboard → Storage → Policies** (authenticated select/insert/update/delete on that bucket only). Display uses 1-hour signed URLs
