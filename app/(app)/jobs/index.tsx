@@ -23,6 +23,8 @@ import { showMessage } from '@/lib/dialog';
 import {
   addDays,
   addMonths,
+  BOARD_SECTION_INSET,
+  boardChrome,
   buildJobDayColumns,
   buildMonthCells,
   formatBoardRange,
@@ -30,7 +32,9 @@ import {
   jobCardFace,
   localDayKey,
   MONDAY_FIRST_LABELS,
+  splitRowWidths,
   startOfDay,
+  WEEK_COLUMN_GAP,
   type DayColumn,
   type MonthCell,
 } from '@/lib/job-board';
@@ -150,9 +154,9 @@ export default function JobsListScreen() {
   );
   const monthCells = useMemo(() => buildMonthCells(jobs, anchor, today), [jobs, anchor, today]);
   const rangeLabel = mode === 'week' ? formatBoardRange(weekColumns) : formatMonthTitle(anchor);
-  const weekSlots = windowWidth >= 1280 ? 7 : windowWidth >= 900 ? 4 : 1.7;
-  const weekColumnWidth = Math.max(200, Math.min(248, Math.floor((windowWidth - 40) / weekSlots)));
-  const monthCellWidth = Math.floor((Math.min(windowWidth, 1200) - 24) / 7);
+  const chrome = useMemo(() => boardChrome(windowWidth), [windowWidth]);
+  const [measuredFrame, setMeasuredFrame] = useState(0);
+  const gridWidth = Math.max(0, (measuredFrame || chrome.frameWidth) - BOARD_SECTION_INSET * 2);
   const web = Platform.OS === 'web';
 
   const load = useCallback(async () => {
@@ -408,6 +412,18 @@ export default function JobsListScreen() {
 
   return (
     <View style={styles.flex}>
+      <View
+        style={[
+          styles.boardFrame,
+          chrome.fitWeek
+            ? { width: chrome.frameWidth, maxWidth: '100%', alignSelf: 'center' }
+            : styles.boardFrameFull,
+        ]}
+        onLayout={(event) => {
+          const next = Math.floor(event.nativeEvent.layout.width);
+          setMeasuredFrame((current) => (current === next ? current : next));
+        }}
+      >
       <Pressable
         style={styles.newJobBtn}
         onPress={() => setNewOpen(true)}
@@ -506,12 +522,12 @@ export default function JobsListScreen() {
         {mode === 'week' ? (
           <WeekBoard
             columns={weekColumns}
-            columnWidth={weekColumnWidth}
-            windowWidth={windowWidth}
+            fitWeek={chrome.fitWeek}
+            scrollColumnWidth={chrome.scrollColumnWidth}
             onOpen={openJob}
           />
         ) : (
-          <MonthBoard cells={monthCells} cellWidth={monthCellWidth} onOpen={openJob} />
+          <MonthBoard cells={monthCells} gridWidth={gridWidth} borderBox={web} onOpen={openJob} />
         )}
 
         {archivedJobs.length > 0 ? (
@@ -529,6 +545,7 @@ export default function JobsListScreen() {
           </View>
         ) : null}
       </ScrollView>
+      </View>
 
       <Modal visible={newOpen} transparent animationType="slide" onRequestClose={closeNewJob}>
         <View style={styles.sheetBackdrop}>
@@ -645,105 +662,125 @@ export default function JobsListScreen() {
 
 function WeekBoard({
   columns,
-  columnWidth,
-  windowWidth,
+  fitWeek,
+  scrollColumnWidth,
   onOpen,
 }: {
   columns: DayColumn<Job>[];
-  columnWidth: number;
-  windowWidth: number;
+  fitWeek: boolean;
+  scrollColumnWidth: number;
   onOpen: (id: string) => void;
 }) {
-  return (
-    <ScrollView
-      horizontal
-      nestedScrollEnabled
-      showsHorizontalScrollIndicator
-      style={[styles.dayScroller, { width: windowWidth }]}
-      contentContainerStyle={styles.boardContent}
+  const days = columns.map((column) => (
+    <View
+      key={column.key}
+      style={[
+        styles.column,
+        fitWeek ? styles.columnFit : { width: scrollColumnWidth },
+        column.isToday && styles.columnToday,
+      ]}
     >
-      {columns.map((column) => (
-        <View
-          key={column.key}
-          style={[styles.column, { width: columnWidth }, column.isToday && styles.columnToday]}
-        >
-          <View style={styles.columnHeader}>
-            <Text style={[styles.colWeekday, column.isToday && styles.colWeekdayToday]}>
-              {column.weekday}
-            </Text>
-            <Text style={styles.colDay}>{column.dayNum}</Text>
-            <Text style={[styles.colMonth, column.isToday && styles.todayPill]}>
-              {column.isToday ? 'Today' : column.monthLabel}
-            </Text>
-          </View>
-          {column.jobs.length === 0 ? (
-            <Text style={styles.columnEmpty}>No jobs</Text>
-          ) : (
-            column.jobs.map((item) => (
-              <JobListCard key={item.id} job={item} onOpen={() => onOpen(item.id)} />
-            ))
-          )}
-        </View>
-      ))}
-    </ScrollView>
+      <View style={styles.columnHeader}>
+        <Text style={[styles.colWeekday, column.isToday && styles.colWeekdayToday]}>
+          {column.weekday}
+        </Text>
+        <Text style={styles.colDay}>{column.dayNum}</Text>
+        <Text style={[styles.colMonth, column.isToday && styles.todayPill]}>
+          {column.isToday ? 'Today' : column.monthLabel}
+        </Text>
+      </View>
+      {column.jobs.length === 0 ? (
+        <Text style={styles.columnEmpty}>No jobs</Text>
+      ) : (
+        column.jobs.map((item) => (
+          <JobListCard key={item.id} job={item} onOpen={() => onOpen(item.id)} />
+        ))
+      )}
+    </View>
+  ));
+
+  if (fitWeek) {
+    return <View style={[styles.boardContent, styles.boardContentFit]}>{days}</View>;
+  }
+
+  return (
+    <View style={styles.dayScrollerClip}>
+      <ScrollView
+        horizontal
+        nestedScrollEnabled
+        showsHorizontalScrollIndicator
+        style={styles.dayScroller}
+        contentContainerStyle={styles.boardContent}
+      >
+        {days}
+      </ScrollView>
+    </View>
   );
 }
 
 function MonthBoard({
   cells,
-  cellWidth,
+  gridWidth,
+  borderBox,
   onOpen,
 }: {
   cells: MonthCell<Job>[];
-  cellWidth: number;
+  gridWidth: number;
+  borderBox: boolean;
   onOpen: (id: string) => void;
 }) {
+  const outset = borderBox ? 0 : 4;
+  const widths = splitRowWidths(gridWidth, MONDAY_FIRST_LABELS.length, outset);
   return (
-    <View style={styles.monthWrap}>
-      <View style={styles.monthHead}>
-        {MONDAY_FIRST_LABELS.map((label) => (
-          <Text key={label} style={[styles.monthHeadText, { width: cellWidth }]}>
-            {label}
-          </Text>
-        ))}
-      </View>
-      <View style={styles.monthGrid}>
-        {cells.map((cell) => (
-          <View
-            key={cell.key}
-            style={[
-              styles.monthCell,
-              { width: cellWidth },
-              !cell.inMonth && styles.monthCellOut,
-              cell.isToday && styles.monthCellToday,
-            ]}
-          >
-            <Text style={[styles.monthDay, cell.isToday && styles.monthDayToday]}>{cell.dayNum}</Text>
-            {cell.jobs.map((job) => {
-              const face = jobCardFace(job);
-              return (
-                <Pressable
-                  key={job.id}
-                  style={[styles.monthChip, { borderLeftColor: stripeColor(job.status) }]}
-                  onPress={() => onOpen(job.id)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Open ${face.unit} ${face.task}`}
-                >
-                  <Text style={styles.monthChipText} numberOfLines={2}>
-                    {face.unit}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        ))}
+    <View style={styles.monthInset}>
+      <View style={styles.monthWrap}>
+        <View style={styles.monthHead}>
+          {MONDAY_FIRST_LABELS.map((label, index) => (
+            <Text key={label} style={[styles.monthHeadText, { width: (widths[index] ?? 0) + outset }]}>
+              {label}
+            </Text>
+          ))}
+        </View>
+        <View style={styles.monthGrid}>
+          {cells.map((cell, index) => (
+            <View
+              key={cell.key}
+              style={[
+                styles.monthCell,
+                { width: widths[index % widths.length] },
+                !cell.inMonth && styles.monthCellOut,
+                cell.isToday && styles.monthCellToday,
+              ]}
+            >
+              <Text style={[styles.monthDay, cell.isToday && styles.monthDayToday]}>{cell.dayNum}</Text>
+              {cell.jobs.map((job) => {
+                const face = jobCardFace(job);
+                return (
+                  <Pressable
+                    key={job.id}
+                    style={[styles.monthChip, { borderLeftColor: stripeColor(job.status) }]}
+                    onPress={() => onOpen(job.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open ${face.unit} ${face.task}`}
+                  >
+                    <Text style={styles.monthChipText} numberOfLines={2}>
+                      {face.unit}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ))}
+        </View>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: colors.offWhite },
+  flex: { flex: 1, backgroundColor: colors.offWhite, width: '100%', overflow: 'hidden' },
+  boardFrame: { flex: 1, maxWidth: '100%' },
+  boardFrameFull: { width: '100%', alignSelf: 'stretch' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   hello: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.xs },
   helloText: { fontSize: 18, fontWeight: '800', color: colors.navy },
@@ -760,7 +797,7 @@ const styles = StyleSheet.create({
   signOutBtn: { paddingHorizontal: 12, paddingVertical: 6 },
   signOutText: { color: colors.gold, fontWeight: '700' },
   boardScroll: { flex: 1 },
-  boardScrollContent: { paddingBottom: spacing.xl },
+  boardScrollContent: { paddingBottom: spacing.xl, width: '100%' },
   toolbar: {
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.sm,
@@ -807,19 +844,27 @@ const styles = StyleSheet.create({
     color: colors.muted,
     lineHeight: 20,
   },
-  dayScroller: { flexGrow: 0 },
+  dayScrollerClip: { width: '100%', overflow: 'hidden' },
+  dayScroller: { flexGrow: 0, width: '100%' },
   boardContent: {
-    paddingHorizontal: spacing.sm,
+    flexDirection: 'row',
+    gap: WEEK_COLUMN_GAP,
+    paddingHorizontal: spacing.md,
     paddingBottom: spacing.md,
     alignItems: 'flex-start',
   },
+  boardContentFit: {
+    width: '100%',
+  },
   column: {
-    marginRight: 10,
+    minWidth: 0,
+    overflow: 'hidden',
     backgroundColor: '#EEF2F6',
     borderRadius: 14,
     padding: 8,
     minHeight: 280,
   },
+  columnFit: { flex: 1 },
   columnToday: {
     backgroundColor: '#FFF8E6',
     borderWidth: 1,
@@ -849,11 +894,17 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4,
     marginBottom: 8,
   },
-  jobCardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 6 },
-  task: { flex: 1, fontSize: 14, fontWeight: '800', color: colors.navy, lineHeight: 18 },
+  jobCardTop: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 6,
+  },
+  task: { flex: 1, minWidth: 0, fontSize: 14, fontWeight: '800', color: colors.navy, lineHeight: 18 },
   unit: { marginTop: 6, fontSize: 15, fontWeight: '800', color: colors.navy },
   jobMeta: { marginTop: 2, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 6 },
-  place: { flex: 1, color: colors.muted, fontSize: 12, fontWeight: '700' },
+  place: { flex: 1, minWidth: 0, color: colors.muted, fontSize: 12, fontWeight: '700' },
   jobNum: { color: colors.navy, fontWeight: '900', fontSize: 12 },
   invoiced: {
     marginTop: 6,
@@ -867,7 +918,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 2,
   },
-  monthWrap: { paddingHorizontal: spacing.sm, paddingBottom: spacing.md },
+  monthInset: { paddingHorizontal: spacing.md, paddingBottom: spacing.md, width: '100%' },
+  monthWrap: { width: '100%' },
   monthHead: { flexDirection: 'row' },
   monthHeadText: {
     textAlign: 'center',
@@ -880,12 +932,13 @@ const styles = StyleSheet.create({
   monthCell: {
     minHeight: 92,
     backgroundColor: colors.white,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.border,
     padding: 4,
+    overflow: 'hidden',
   },
   monthCellOut: { backgroundColor: '#EEF2F6' },
-  monthCellToday: { borderColor: colors.gold, borderWidth: 2 },
+  monthCellToday: { borderColor: colors.gold },
   monthDay: { color: colors.navy, fontWeight: '800', fontSize: 12, marginBottom: 2 },
   monthDayToday: {
     alignSelf: 'flex-start',
