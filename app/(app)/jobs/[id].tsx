@@ -24,6 +24,7 @@ import { colors, spacing } from '@/constants/theme';
 import { confirmArchiveJob } from '@/lib/archive-job';
 import { confirmDeleteJob, deleteJobPermanently } from '@/lib/delete-job';
 import { showMessage } from '@/lib/dialog';
+import { boardChrome } from '@/lib/job-board';
 import { formatJobNumber, isMissingJobNumberColumn } from '@/lib/job-number';
 import { completionTarget, type FinishTarget } from '@/lib/finish-job';
 import { captureFromCamera, newPairId, pickFromLibrary } from '@/lib/photos';
@@ -68,7 +69,11 @@ type PendingUpload = {
 };
 
 export default function JobDetailScreen() {
-  const { height: windowHeight } = useWindowDimensions();
+  const { height: windowHeight, width: windowWidth } = useWindowDimensions();
+  const chrome = useMemo(() => boardChrome(windowWidth), [windowWidth]);
+  const frameStyle = chrome.fitWeek
+    ? { width: chrome.frameWidth, maxWidth: '100%' as const, alignSelf: 'center' as const }
+    : { width: '100%' as const, alignSelf: 'stretch' as const };
   const params = useLocalSearchParams<{ id: string; addPhoto?: string | string[] }>();
   const id = firstParam(params.id);
   const addPhotoFlag = firstParam(params.addPhoto);
@@ -486,7 +491,8 @@ export default function JobDetailScreen() {
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <View style={[styles.detailFrame, frameStyle]}>
+      <ScrollView style={styles.detailScroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.headerCard}>
           {formatJobNumber(job.job_number) ? (
             <Text style={styles.jobNumber}>{formatJobNumber(job.job_number)}</Text>
@@ -602,6 +608,7 @@ export default function JobDetailScreen() {
           )}
         </Pressable>
       </ScrollView>
+      </View>
 
       <Modal visible={sheetOpen} transparent animationType="slide" onRequestClose={closeSheet}>
         <KeyboardAvoidingView
@@ -613,7 +620,7 @@ export default function JobDetailScreen() {
             onPress={closeSheet}
             accessibilityLabel="Dismiss add photo"
           />
-          <View style={styles.sheet}>
+          <View style={[styles.sheet, frameStyle]}>
               <ScrollView
                 keyboardShouldPersistTaps="handled"
                 bounces={false}
@@ -755,9 +762,11 @@ export default function JobDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: colors.offWhite },
+  flex: { flex: 1, backgroundColor: colors.offWhite, width: '100%' },
+  detailFrame: { flex: 1, maxWidth: '100%' },
+  detailScroll: { flex: 1, width: '100%' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.lg },
-  content: { padding: spacing.md, paddingBottom: spacing.xl },
+  content: { paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.xl, width: '100%' },
   headerCard: {
     backgroundColor: colors.white,
     borderRadius: 14,
@@ -860,6 +869,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(11,31,58,0.45)',
     justifyContent: 'flex-end',
+    alignItems: 'center',
   },
   dismissLayer: {
     position: 'absolute',

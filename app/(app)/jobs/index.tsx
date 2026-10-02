@@ -35,6 +35,7 @@ import {
   MONDAY_FIRST_LABELS,
   splitRowWidths,
   startOfDay,
+  visibleWeekColumns,
   WEEK_COLUMN_GAP,
   type DayColumn,
   type MonthCell,
@@ -100,39 +101,61 @@ function missingBoardColumn(message: string) {
 export function JobListCard({
   job,
   onOpen,
+  spread = false,
 }: {
   job: Job;
   onOpen: () => void;
+  /** Wide row for the day list and archived jobs. Week columns stay stacked and short. */
+  spread?: boolean;
 }) {
   const face = jobCardFace(job);
   const numberLabel = formatJobNumber(job.job_number);
-  return (
-    <Pressable
-      style={[styles.jobCard, { borderLeftColor: stripeColor(job.status) }]}
-      onPress={onOpen}
-      accessibilityRole="button"
-      accessibilityLabel={
-        numberLabel
-          ? `Open ${numberLabel} ${face.unit} ${face.task}`
-          : `Open ${face.unit} ${face.task}`
-      }
-    >
-      <View style={styles.jobCardTop}>
-        <Text style={styles.task} numberOfLines={2}>
-          {face.task}
-        </Text>
-        <StatusBadge status={job.status} compact />
-      </View>
+  const label = [numberLabel, face.unit, face.task, face.address].filter(Boolean).join(' ');
+  const number = numberLabel ? <Text style={styles.jobNum}>{numberLabel}</Text> : null;
+  const badge = <StatusBadge status={job.status} compact />;
+  const invoiced = job.invoice_ref ? <Text style={styles.invoiced}>Invoiced</Text> : null;
+  const body = (
+    <View style={styles.jobCardBody}>
       <Text style={styles.unit} numberOfLines={1}>
         {face.unit}
       </Text>
-      <View style={styles.jobMeta}>
-        <Text style={styles.place} numberOfLines={1}>
-          {face.place}
-        </Text>
-        {numberLabel ? <Text style={styles.jobNum}>{numberLabel}</Text> : null}
-      </View>
-      {job.invoice_ref ? <Text style={styles.invoiced}>Invoiced</Text> : null}
+      <Text style={styles.task} numberOfLines={spread ? 1 : 2}>
+        {face.task}
+      </Text>
+      <Text style={styles.address} numberOfLines={1}>
+        {face.address}
+      </Text>
+    </View>
+  );
+  return (
+    <Pressable
+      style={[
+        styles.jobCard,
+        spread && styles.jobCardSpread,
+        { borderLeftColor: stripeColor(job.status) },
+      ]}
+      onPress={onOpen}
+      accessibilityRole="button"
+      accessibilityLabel={`Open ${label}`}
+    >
+      {spread ? (
+        <>
+          {body}
+          <View style={styles.jobCardTrail}>
+            {number}
+            {badge}
+            {invoiced}
+          </View>
+        </>
+      ) : (
+        <>
+          <View style={styles.jobCardSide}>
+            {number ?? <View />}
+            {badge}
+          </View>
+          {body}
+        </>
+      )}
     </Pressable>
   );
 }
@@ -153,6 +176,7 @@ export default function JobsListScreen() {
   const [createStatus, setCreateStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [mode, setMode] = useState<BoardMode>('week');
+  const [showSunday, setShowSunday] = useState(false);
   const [anchor, setAnchor] = useState(() => startOfDay(new Date()));
   const [focusedDay, setFocusedDay] = useState<string | null>(null);
   const { height: windowHeight, width: windowWidth } = useWindowDimensions();
@@ -161,8 +185,12 @@ export default function JobsListScreen() {
     () => buildJobDayColumns(jobs, anchor, today),
     [jobs, anchor, today]
   );
+  const visibleWeek = useMemo(
+    () => visibleWeekColumns(weekColumns, showSunday),
+    [weekColumns, showSunday]
+  );
   const monthCells = useMemo(() => buildMonthCells(jobs, anchor, today), [jobs, anchor, today]);
-  const rangeLabel = mode === 'week' ? formatBoardRange(weekColumns) : formatMonthTitle(anchor);
+  const rangeLabel = mode === 'week' ? formatBoardRange(visibleWeek) : formatMonthTitle(anchor);
   const focusedColumn = useMemo(() => {
     if (!focusedDay) return null;
     return (
@@ -528,23 +556,37 @@ export default function JobsListScreen() {
               <Text style={styles.todayBtnText}>Today</Text>
             </Pressable>
           </View>
-          <View style={styles.modeToggle}>
-            <Pressable
-              style={[styles.modeBtn, mode === 'week' && styles.modeBtnOn]}
-              onPress={showWeek}
-              accessibilityRole="button"
-              accessibilityLabel="Week view"
-            >
-              <Text style={[styles.modeText, mode === 'week' && styles.modeTextOn]}>Week</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.modeBtn, mode === 'month' && styles.modeBtnOn]}
-              onPress={showMonth}
-              accessibilityRole="button"
-              accessibilityLabel="Month view"
-            >
-              <Text style={[styles.modeText, mode === 'month' && styles.modeTextOn]}>Month</Text>
-            </Pressable>
+          <View style={styles.modeRow}>
+            <View style={styles.modeToggle}>
+              <Pressable
+                style={[styles.modeBtn, mode === 'week' && styles.modeBtnOn]}
+                onPress={showWeek}
+                accessibilityRole="button"
+                accessibilityLabel="Week view"
+              >
+                <Text style={[styles.modeText, mode === 'week' && styles.modeTextOn]}>Week</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.modeBtn, mode === 'month' && styles.modeBtnOn]}
+                onPress={showMonth}
+                accessibilityRole="button"
+                accessibilityLabel="Month view"
+              >
+                <Text style={[styles.modeText, mode === 'month' && styles.modeTextOn]}>Month</Text>
+              </Pressable>
+            </View>
+            {mode === 'week' ? (
+              <Pressable
+                style={[styles.sunBtn, showSunday && styles.sunBtnOn]}
+                onPress={() => setShowSunday((current) => !current)}
+                accessibilityRole="button"
+                accessibilityLabel={showSunday ? 'Hide Sunday' : 'Show Sunday'}
+              >
+                <Text style={[styles.sunBtnText, showSunday && styles.sunBtnTextOn]}>
+                  {showSunday ? 'Hide Sun' : 'Show Sun'}
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
         </View>
 
@@ -565,7 +607,7 @@ export default function JobsListScreen() {
           />
         ) : mode === 'week' ? (
           <WeekBoard
-            columns={weekColumns}
+            columns={visibleWeek}
             fitWeek={chrome.fitWeek}
             scrollColumnWidth={chrome.scrollColumnWidth}
             onOpen={openJob}
@@ -589,7 +631,7 @@ export default function JobsListScreen() {
             </Text>
             {archivedJobs.map((item) => (
               <View key={item.id} style={styles.archivedCard}>
-                <JobListCard job={item} onOpen={() => openJob(item.id)} />
+                <JobListCard job={item} spread onOpen={() => openJob(item.id)} />
                 <Text style={styles.meta}>Updated {formatWhen(item.updated_at)}</Text>
               </View>
             ))}
@@ -806,7 +848,7 @@ function DayAgenda({
         {count === 0 ? 'No jobs this day.' : `${count} job${count === 1 ? '' : 's'}`}
       </Text>
       {column.jobs.map((job) => (
-        <JobListCard key={job.id} job={job} onOpen={() => onOpen(job.id)} />
+        <JobListCard key={job.id} job={job} spread onOpen={() => onOpen(job.id)} />
       ))}
     </View>
   );
@@ -859,16 +901,20 @@ function MonthBoard({
               </Text>
               {cell.jobs.map((job) => {
                 const face = jobCardFace(job);
+                const numberLabel = formatJobNumber(job.job_number);
                 return (
                   <Pressable
                     key={job.id}
                     style={[styles.monthChip, { borderLeftColor: stripeColor(job.status) }]}
                     onPress={() => onOpen(job.id)}
                     accessibilityRole="button"
-                    accessibilityLabel={`Open ${face.unit} ${face.task}`}
+                    accessibilityLabel={`Open ${[numberLabel, face.unit, face.task].filter(Boolean).join(' ')}`}
                   >
-                    <Text style={styles.monthChipText} numberOfLines={2}>
-                      {face.unit}
+                    <Text style={styles.monthChipText} numberOfLines={1}>
+                      {numberLabel ? `${numberLabel} ${face.unit}` : face.unit}
+                    </Text>
+                    <Text style={styles.monthChipScope} numberOfLines={1}>
+                      {face.task}
                     </Text>
                   </Pressable>
                 );
@@ -929,6 +975,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   todayBtnText: { color: colors.navy, fontWeight: '800', fontSize: 13 },
+  modeRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   modeToggle: {
     flexDirection: 'row',
     alignSelf: 'flex-start',
@@ -942,6 +989,17 @@ const styles = StyleSheet.create({
   modeBtnOn: { backgroundColor: colors.navy },
   modeText: { color: colors.navy, fontWeight: '800' },
   modeTextOn: { color: colors.gold },
+  sunBtn: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.gold,
+    backgroundColor: colors.white,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  sunBtnOn: { backgroundColor: colors.navy, borderColor: colors.navy },
+  sunBtnText: { color: colors.navy, fontWeight: '800', fontSize: 13 },
+  sunBtnTextOn: { color: colors.gold },
   boardEmpty: {
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.sm,
@@ -1004,38 +1062,52 @@ const styles = StyleSheet.create({
   dayAgendaTitle: { color: colors.navy, fontWeight: '900', fontSize: 22 },
   dayAgendaSub: { color: colors.muted, marginTop: 2, marginBottom: spacing.sm },
   jobCard: {
+    alignSelf: 'stretch',
     backgroundColor: colors.white,
-    borderRadius: 12,
-    padding: 10,
+    borderRadius: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
     borderWidth: 1,
     borderColor: colors.border,
     borderLeftWidth: 4,
-    marginBottom: 8,
+    marginBottom: 6,
     zIndex: 1,
   },
-  jobCardTop: {
+  jobCardSpread: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  jobCardBody: { flex: 1, minWidth: 0 },
+  jobCardSide: {
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    gap: 6,
+    marginBottom: 2,
+  },
+  jobCardTrail: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 0,
     gap: 6,
   },
-  task: { flex: 1, minWidth: 0, fontSize: 14, fontWeight: '800', color: colors.navy, lineHeight: 18 },
-  unit: { marginTop: 6, fontSize: 15, fontWeight: '800', color: colors.navy },
-  jobMeta: { marginTop: 2, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 6 },
-  place: { flex: 1, minWidth: 0, color: colors.muted, fontSize: 12, fontWeight: '700' },
-  jobNum: { color: colors.navy, fontWeight: '900', fontSize: 12 },
+  unit: { fontSize: 13, fontWeight: '800', color: colors.navy, lineHeight: 16 },
+  task: { marginTop: 1, fontSize: 12, fontWeight: '700', color: colors.navy, lineHeight: 15 },
+  address: { marginTop: 1, fontSize: 11, fontWeight: '600', color: colors.muted, lineHeight: 14 },
+  jobNum: { color: colors.navy, fontWeight: '900', fontSize: 11 },
   invoiced: {
-    marginTop: 6,
     alignSelf: 'flex-start',
     backgroundColor: '#E8EEF7',
     color: colors.navy,
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '800',
     overflow: 'hidden',
     borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
   },
   monthInset: { paddingHorizontal: spacing.md, paddingBottom: spacing.md, width: '100%' },
   monthWrap: { width: '100%' },
@@ -1076,7 +1148,8 @@ const styles = StyleSheet.create({
     marginBottom: 3,
     zIndex: 1,
   },
-  monthChipText: { color: colors.navy, fontSize: 10, fontWeight: '800' },
+  monthChipText: { color: colors.navy, fontSize: 10, fontWeight: '800', lineHeight: 13 },
+  monthChipScope: { color: colors.navyMid, fontSize: 9, fontWeight: '700', lineHeight: 12 },
   archivedBlock: { marginTop: spacing.lg, paddingHorizontal: spacing.md },
   archivedTitle: { fontSize: 16, fontWeight: '800', color: colors.navy, marginBottom: 4 },
   archivedHint: { color: colors.muted, marginBottom: spacing.sm, lineHeight: 18 },
