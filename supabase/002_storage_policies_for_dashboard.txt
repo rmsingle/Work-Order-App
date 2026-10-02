@@ -1,0 +1,14 @@
+Create these in Supabase Dashboard → Storage → Policies (for bucket job-photos).
+
+SELECT — name job_photos_storage_select — role authenticated
+USING expression: bucket_id = 'job-photos'
+
+INSERT — name job_photos_storage_insert — role authenticated
+WITH CHECK expression: bucket_id = 'job-photos'
+
+UPDATE — name job_photos_storage_update — role authenticated
+USING: bucket_id = 'job-photos'
+WITH CHECK: bucket_id = 'job-photos'
+
+DELETE — name job_photos_storage_delete — role authenticated
+USING: bucket_id = 'job-photos'
