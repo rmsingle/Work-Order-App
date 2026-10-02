@@ -2,9 +2,13 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {
   BOARD_MAX_WIDTH,
+  BOARD_SECTION_INSET,
+  HEADER_BUTTON_PAD,
   WEEK_COLUMN_GAP,
   WEEK_FIT_MIN_WIDTH,
   boardChrome,
+  headerControlInset,
+  sideGutter,
   buildJobDayColumns,
   buildMonthCells,
   currentWeekDays,
@@ -169,7 +173,12 @@ function assertWeekFits(windowWidth) {
 
 const laptop = assertWeekFits(1280);
 assert.equal(laptop.chrome.frameWidth, BOARD_MAX_WIDTH);
-assert.ok(1280 - laptop.chrome.frameWidth >= 64, '1280px viewport keeps side gutters');
+assert.equal(laptop.chrome.frameWidth, 1200);
+const laptopGutter = sideGutter(1280);
+assert.equal(laptopGutter, 40, '1280px viewport keeps about 40px side gutters');
+assert.ok(laptopGutter > 0, 'side columns stay visible');
+assert.equal(headerControlInset(1280), laptopGutter + BOARD_SECTION_INSET - HEADER_BUTTON_PAD);
+assert.equal(headerControlInset(1280) + HEADER_BUTTON_PAD, laptopGutter + BOARD_SECTION_INSET);
 assert.ok(laptop.column >= 140, 'day columns stay readable at 1280');
 const sixDayColumn = fittedWeekColumnWidth(laptop.chrome.innerWidth, WEEK_COLUMN_GAP, 6);
 const sixDayRow = sixDayColumn * 6 + WEEK_COLUMN_GAP * 5;
@@ -185,10 +194,15 @@ assertWeekFits(1366);
 const narrowLaptop = assertWeekFits(WEEK_FIT_MIN_WIDTH);
 assert.ok(narrowLaptop.column >= 110, 'columns compress instead of overflowing just below a laptop width');
 
+assert.equal(sideGutter(1200), 0, 'at the max width the frame fills the window');
+assert.equal(headerControlInset(390), BOARD_SECTION_INSET - HEADER_BUTTON_PAD);
+assert.equal(sideGutter(1440), (1440 - BOARD_MAX_WIDTH) / 2);
+
 for (const width of [390, 768, WEEK_FIT_MIN_WIDTH - 1]) {
   const chrome = boardChrome(width);
   assert.equal(chrome.fitWeek, false, `${width}px stays a phone-style scroller`);
   assert.equal(chrome.frameWidth, width);
+  assert.equal(sideGutter(width), 0);
   const month = splitRowWidths(chrome.innerWidth, 7);
   assert.equal(
     month.reduce((sum, cell) => sum + cell, 0),
@@ -213,11 +227,17 @@ assert.match(boardSource, /showSunday/);
 assert.match(boardSource, /Show Sun/);
 assert.match(boardSource, /face\.address/);
 assert.match(boardSource, /const \[showSunday, setShowSunday\] = useState\(false\)/);
+assert.match(boardSource, /headerControlInset\(windowWidth\)/);
+assert.match(boardSource, /marginRight: headerInset/);
+assert.match(boardSource, /HEADER_BUTTON_PAD/);
 assert.doesNotMatch(boardSource, /flex: \{ flex: 1, backgroundColor: colors\.offWhite, width: '100%', overflow: 'hidden' \}/);
 
 const detailSource = fs.readFileSync(new URL('../app/(app)/jobs/[id].tsx', import.meta.url), 'utf8');
 assert.match(detailSource, /boardChrome/);
 assert.match(detailSource, /frameWidth/);
+assert.match(detailSource, /headerControlInset\(windowWidth\)/);
+assert.match(detailSource, /marginLeft: headerInset/);
+assert.match(detailSource, /HEADER_BUTTON_PAD/);
 assert.match(detailSource, /styles\.detailFrame/);
 assert.match(detailSource, /\[styles\.sheet, frameStyle\]/);
 

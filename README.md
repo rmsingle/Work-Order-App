@@ -19,7 +19,7 @@ Production site: [https://psg-job-tracker-psg9.vercel.app](https://psg-job-track
 3. **Load current jobs** in the Supabase SQL Editor, after `001`–`004` if those are not already applied:
    - `supabase/migrations/005_jobs_scheduled_on.sql` (board date, invoice label, seed key)
    - `supabase/migrations/006_seed_current_work.sql` (Northcliffe units + open follow-ups)
-4. Open **Jobs**. The home screen is a **week at a glance** (Monday–Saturday columns, prev/next, Today, Week | Month, and **Show Sun** when a Sunday column is needed). The week of Sep 28–Oct 3, 2026 is filled with active Northcliffe work, including Friday Oct 2. Done paint on 708 and 912 stays on Sep 14–15; use the arrows to see that week. Job cards are wide rectangles showing the unit, scope, address snippet, status, and job number. A job page uses the same centered width as the board.
+4. Open **Jobs**. The home screen is a **week at a glance** (Monday–Saturday columns, prev/next, Today, Week | Month, and **Show Sun** when a Sunday column is needed). The week of Sep 28–Oct 3, 2026 is filled with active Northcliffe work, including Friday Oct 2. Done paint on 708 and 912 stays on Sep 14–15; use the arrows to see that week. Job cards are wide rectangles showing the unit, scope, address snippet, status, and job number. The board and job page share a centered frame about 1200px wide (about 40px of gutter on each side of a 1280px screen). Sign out and Back sit on that frame, in line with the content, not on the viewport edge.
 
 If you have a Postgres URL locally, `SUPABASE_DB_URL="postgresql://..." npm run seed` runs `005` then `006` with `psql`. Otherwise paste the two files. Re-running `006` updates those rows and replaces notes that start with `Seed:`. Notes added in the app stay.
 
@@ -33,7 +33,7 @@ The seed does not add the giveaway that is not a work order, and it does not add
 | Email sign-in | Working as a secondary option. The login screen does not offer public sign-up |
 | Session persistence | Working (AsyncStorage / localStorage) |
 | Sign out | Working |
-| Jobs home (week at a glance, month grid, job number, status) | Working — gold **New Job** at the top. **Week** is the default: Monday–Saturday columns, prev/next, Today, and **Show Sun** to add Sunday. **Month** is the same jobs on a full calendar. A job uses `scheduled_on` when set, otherwise the local day of `created_at`. Cards are horizontal rectangles (unit, scope, address snippet, status, job number) and have no Add photo. Archived jobs stay below the board. The job page stays inside the same centered frame |
+| Jobs home (week at a glance, month grid, job number, status) | Working — gold **New Job** at the top. **Week** is the default: Monday–Saturday columns, prev/next, Today, and **Show Sun** to add Sunday. **Month** is the same jobs on a full calendar. A job uses `scheduled_on` when set, otherwise the local day of `created_at`. Cards are horizontal rectangles (unit, scope, address snippet, status, job number) and have no Add photo. Archived jobs stay below the board. The job page uses the same centered frame. Sign out and Back line up with that frame |
 | New Job (title + property address + photos) | Working — gold button opens the sheet; photos upload to `job-photos` after the job row exists |
 | Job detail — centered header title, two-column rows, Open in Google Maps beside the address | Working |
 | Fast Capture (camera / library) | Working — uploads to Storage and sets `storage_path` |

@@ -30,6 +30,8 @@ import {
   formatBoardRange,
   formatDayTitle,
   formatMonthTitle,
+  HEADER_BUTTON_PAD,
+  headerControlInset,
   jobCardFace,
   localDayKey,
   MONDAY_FIRST_LABELS,
@@ -200,6 +202,7 @@ export default function JobsListScreen() {
     );
   }, [focusedDay, weekColumns, monthCells]);
   const chrome = useMemo(() => boardChrome(windowWidth), [windowWidth]);
+  const headerInset = headerControlInset(windowWidth);
   const [measuredFrame, setMeasuredFrame] = useState(0);
   const gridWidth = Math.max(0, (measuredFrame || chrome.frameWidth) - BOARD_SECTION_INSET * 2);
   const web = Platform.OS === 'web';
@@ -290,7 +293,14 @@ export default function JobsListScreen() {
       headerTitleAlign: 'center',
       headerLeft: () => <View style={{ width: HEADER_SIDE }} />,
       headerRight: () => (
-        <View style={{ width: HEADER_SIDE, alignItems: 'flex-end', justifyContent: 'center' }}>
+        <View
+          style={{
+            width: HEADER_SIDE,
+            marginRight: headerInset,
+            alignItems: 'flex-end',
+            justifyContent: 'center',
+          }}
+        >
           <Pressable
             onPress={() => signOut().catch(() => undefined)}
             style={styles.signOutBtn}
@@ -302,7 +312,7 @@ export default function JobsListScreen() {
         </View>
       ),
     });
-  }, [navigation, signOut]);
+  }, [navigation, signOut, headerInset]);
 
   function shift(direction: -1 | 1) {
     setFocusedDay(null);
@@ -944,7 +954,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   newJobBtnText: { color: colors.navy, fontWeight: '900', fontSize: 16 },
-  signOutBtn: { paddingHorizontal: 12, paddingVertical: 6 },
+  signOutBtn: { paddingHorizontal: HEADER_BUTTON_PAD, paddingVertical: 6 },
   signOutText: { color: colors.gold, fontWeight: '700' },
   boardScroll: { flex: 1 },
   boardScrollContent: { paddingBottom: spacing.xl, width: '100%' },
