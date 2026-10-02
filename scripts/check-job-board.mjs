@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import {
   BOARD_MAX_WIDTH,
   WEEK_COLUMN_GAP,
@@ -9,6 +10,7 @@ import {
   currentWeekDays,
   fittedWeekColumnWidth,
   formatBoardRange,
+  formatDayTitle,
   jobBoardDayKey,
   jobCardFace,
   localDayKey,
@@ -62,6 +64,9 @@ assert.deepEqual(
 const thursday = columns.find((column) => column.key === '2026-09-24');
 assert.ok(thursday);
 assert.equal(thursday.jobs.length, 0);
+
+assert.equal(formatDayTitle(wednesday.date), 'Wednesday, Sep 23');
+assert.equal(formatDayTitle(new Date(2026, 9, 2)), 'Friday, Oct 2');
 
 assert.equal(formatBoardRange(columns), 'Sep 21–27, 2026');
 assert.equal(
@@ -149,5 +154,12 @@ assert.equal(
   phoneNative.reduce((sum, cell) => sum + cell, 0) + 4 * 7,
   boardChrome(390).innerWidth
 );
+
+const boardSource = fs.readFileSync(new URL('../app/(app)/jobs/index.tsx', import.meta.url), 'utf8');
+assert.match(boardSource, /onOpenDay/);
+assert.match(boardSource, /Open \$\{formatDayTitle/);
+assert.match(boardSource, /overflow: shellOverflow/);
+assert.match(boardSource, /'clip' as 'hidden'/);
+assert.doesNotMatch(boardSource, /flex: \{ flex: 1, backgroundColor: colors\.offWhite, width: '100%', overflow: 'hidden' \}/);
 
 console.log('week and month boards group by scheduled_on');

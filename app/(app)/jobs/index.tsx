@@ -28,6 +28,7 @@ import {
   buildJobDayColumns,
   buildMonthCells,
   formatBoardRange,
+  formatDayTitle,
   formatMonthTitle,
   jobCardFace,
   localDayKey,
@@ -52,6 +53,13 @@ function formatWhen(iso: string) {
 }
 
 const HEADER_SIDE = 104;
+
+/**
+ * `overflow: hidden` makes a scroll container. On web that container, stacked
+ * with the board ScrollView's translateZ layer, drops presses on descendants.
+ * `clip` still rounds the corners and stops sideways spill without that scrollport.
+ */
+const shellOverflow = Platform.OS === 'web' ? ('clip' as 'hidden') : 'hidden';
 
 type BoardMode = 'week' | 'month';
 
@@ -146,6 +154,7 @@ export default function JobsListScreen() {
   const [saving, setSaving] = useState(false);
   const [mode, setMode] = useState<BoardMode>('week');
   const [anchor, setAnchor] = useState(() => startOfDay(new Date()));
+  const [focusedDay, setFocusedDay] = useState<string | null>(null);
   const { height: windowHeight, width: windowWidth } = useWindowDimensions();
   const today = useMemo(() => startOfDay(new Date()), [jobs]);
   const weekColumns = useMemo(
@@ -154,6 +163,14 @@ export default function JobsListScreen() {
   );
   const monthCells = useMemo(() => buildMonthCells(jobs, anchor, today), [jobs, anchor, today]);
   const rangeLabel = mode === 'week' ? formatBoardRange(weekColumns) : formatMonthTitle(anchor);
+  const focusedColumn = useMemo(() => {
+    if (!focusedDay) return null;
+    return (
+      weekColumns.find((column) => column.key === focusedDay) ??
+      monthCells.find((cell) => cell.key === focusedDay) ??
+      null
+    );
+  }, [focusedDay, weekColumns, monthCells]);
   const chrome = useMemo(() => boardChrome(windowWidth), [windowWidth]);
   const [measuredFrame, setMeasuredFrame] = useState(0);
   const gridWidth = Math.max(0, (measuredFrame || chrome.frameWidth) - BOARD_SECTION_INSET * 2);
@@ -260,9 +277,29 @@ export default function JobsListScreen() {
   }, [navigation, signOut]);
 
   function shift(direction: -1 | 1) {
+    setFocusedDay(null);
     setAnchor((current) =>
       mode === 'month' ? addMonths(current, direction) : addDays(current, direction * 7)
     );
+  }
+
+  function showWeek() {
+    setFocusedDay(null);
+    setMode('week');
+  }
+
+  function showMonth() {
+    setFocusedDay(null);
+    setMode('month');
+  }
+
+  function jumpToday() {
+    setFocusedDay(null);
+    setAnchor(startOfDay(new Date()));
+  }
+
+  function openDay(dayKey: string) {
+    setFocusedDay(dayKey);
   }
 
   async function addLibraryPhotos() {
@@ -437,8 +474,8 @@ export default function JobsListScreen() {
           {profile?.full_name ? `Hi, ${profile.full_name}` : 'PSG jobs'}
         </Text>
         <Text style={styles.helloSub}>
-          Week at a glance. Open a card to add photos. Archived jobs are hidden from this board and
-          listed below.
+          Tap a day to open it. Tap a card for photos. Archived jobs stay off this board and are listed
+          below.
         </Text>
       </View>
 
@@ -484,7 +521,7 @@ export default function JobsListScreen() {
             </Pressable>
             <Pressable
               style={styles.todayBtn}
-              onPress={() => setAnchor(startOfDay(new Date()))}
+              onPress={jumpToday}
               accessibilityRole="button"
               accessibilityLabel="Jump to today"
             >
@@ -494,7 +531,7 @@ export default function JobsListScreen() {
           <View style={styles.modeToggle}>
             <Pressable
               style={[styles.modeBtn, mode === 'week' && styles.modeBtnOn]}
-              onPress={() => setMode('week')}
+              onPress={showWeek}
               accessibilityRole="button"
               accessibilityLabel="Week view"
             >
@@ -502,7 +539,7 @@ export default function JobsListScreen() {
             </Pressable>
             <Pressable
               style={[styles.modeBtn, mode === 'month' && styles.modeBtnOn]}
-              onPress={() => setMode('month')}
+              onPress={showMonth}
               accessibilityRole="button"
               accessibilityLabel="Month view"
             >
@@ -519,15 +556,29 @@ export default function JobsListScreen() {
           </Text>
         ) : null}
 
-        {mode === 'week' ? (
+        {focusedColumn ? (
+          <DayAgenda
+            column={focusedColumn}
+            backLabel={mode === 'week' ? 'Back to week' : 'Back to month'}
+            onBack={() => setFocusedDay(null)}
+            onOpen={openJob}
+          />
+        ) : mode === 'week' ? (
           <WeekBoard
             columns={weekColumns}
             fitWeek={chrome.fitWeek}
             scrollColumnWidth={chrome.scrollColumnWidth}
             onOpen={openJob}
+            onOpenDay={openDay}
           />
         ) : (
-          <MonthBoard cells={monthCells} gridWidth={gridWidth} borderBox={web} onOpen={openJob} />
+          <MonthBoard
+            cells={monthCells}
+            gridWidth={gridWidth}
+            borderBox={web}
+            onOpen={openJob}
+            onOpenDay={openDay}
+          />
         )}
 
         {archivedJobs.length > 0 ? (
@@ -665,11 +716,13 @@ function WeekBoard({
   fitWeek,
   scrollColumnWidth,
   onOpen,
+  onOpenDay,
 }: {
   columns: DayColumn<Job>[];
   fitWeek: boolean;
   scrollColumnWidth: number;
   onOpen: (id: string) => void;
+  onOpenDay: (dayKey: string) => void;
 }) {
   const days = columns.map((column) => (
     <View
@@ -680,7 +733,13 @@ function WeekBoard({
         column.isToday && styles.columnToday,
       ]}
     >
-      <View style={styles.columnHeader}>
+      <Pressable
+        style={styles.dayHit}
+        onPress={() => onOpenDay(column.key)}
+        accessibilityRole="button"
+        accessibilityLabel={`Open ${formatDayTitle(column.date)}`}
+      />
+      <View style={styles.columnHeader} pointerEvents="none">
         <Text style={[styles.colWeekday, column.isToday && styles.colWeekdayToday]}>
           {column.weekday}
         </Text>
@@ -690,7 +749,9 @@ function WeekBoard({
         </Text>
       </View>
       {column.jobs.length === 0 ? (
-        <Text style={styles.columnEmpty}>No jobs</Text>
+        <Text style={styles.columnEmpty} pointerEvents="none">
+          No jobs
+        </Text>
       ) : (
         column.jobs.map((item) => (
           <JobListCard key={item.id} job={item} onOpen={() => onOpen(item.id)} />
@@ -718,16 +779,51 @@ function WeekBoard({
   );
 }
 
+function DayAgenda({
+  column,
+  backLabel,
+  onBack,
+  onOpen,
+}: {
+  column: DayColumn<Job>;
+  backLabel: string;
+  onBack: () => void;
+  onOpen: (id: string) => void;
+}) {
+  const count = column.jobs.length;
+  return (
+    <View style={styles.dayAgenda}>
+      <Pressable
+        onPress={onBack}
+        style={styles.dayBack}
+        accessibilityRole="button"
+        accessibilityLabel={backLabel}
+      >
+        <Text style={styles.dayBackText}>‹ {backLabel}</Text>
+      </Pressable>
+      <Text style={styles.dayAgendaTitle}>{formatDayTitle(column.date)}</Text>
+      <Text style={styles.dayAgendaSub}>
+        {count === 0 ? 'No jobs this day.' : `${count} job${count === 1 ? '' : 's'}`}
+      </Text>
+      {column.jobs.map((job) => (
+        <JobListCard key={job.id} job={job} onOpen={() => onOpen(job.id)} />
+      ))}
+    </View>
+  );
+}
+
 function MonthBoard({
   cells,
   gridWidth,
   borderBox,
   onOpen,
+  onOpenDay,
 }: {
   cells: MonthCell<Job>[];
   gridWidth: number;
   borderBox: boolean;
   onOpen: (id: string) => void;
+  onOpenDay: (dayKey: string) => void;
 }) {
   const outset = borderBox ? 0 : 4;
   const widths = splitRowWidths(gridWidth, MONDAY_FIRST_LABELS.length, outset);
@@ -752,7 +848,15 @@ function MonthBoard({
                 cell.isToday && styles.monthCellToday,
               ]}
             >
-              <Text style={[styles.monthDay, cell.isToday && styles.monthDayToday]}>{cell.dayNum}</Text>
+              <Pressable
+                style={styles.dayHit}
+                onPress={() => onOpenDay(cell.key)}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${formatDayTitle(cell.date)}`}
+              />
+              <Text style={[styles.monthDay, cell.isToday && styles.monthDayToday]} pointerEvents="none">
+                {cell.dayNum}
+              </Text>
               {cell.jobs.map((job) => {
                 const face = jobCardFace(job);
                 return (
@@ -778,7 +882,7 @@ function MonthBoard({
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: colors.offWhite, width: '100%', overflow: 'hidden' },
+  flex: { flex: 1, backgroundColor: colors.offWhite, width: '100%', overflow: shellOverflow },
   boardFrame: { flex: 1, maxWidth: '100%' },
   boardFrameFull: { width: '100%', alignSelf: 'stretch' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
@@ -832,7 +936,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
     borderColor: colors.border,
-    overflow: 'hidden',
+    overflow: shellOverflow,
   },
   modeBtn: { paddingHorizontal: 16, paddingVertical: 8 },
   modeBtnOn: { backgroundColor: colors.navy },
@@ -844,7 +948,7 @@ const styles = StyleSheet.create({
     color: colors.muted,
     lineHeight: 20,
   },
-  dayScrollerClip: { width: '100%', overflow: 'hidden' },
+  dayScrollerClip: { width: '100%', overflow: shellOverflow },
   dayScroller: { flexGrow: 0, width: '100%' },
   boardContent: {
     flexDirection: 'row',
@@ -858,7 +962,8 @@ const styles = StyleSheet.create({
   },
   column: {
     minWidth: 0,
-    overflow: 'hidden',
+    position: 'relative',
+    overflow: shellOverflow,
     backgroundColor: '#EEF2F6',
     borderRadius: 14,
     padding: 8,
@@ -885,6 +990,19 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   columnEmpty: { color: colors.muted, textAlign: 'center', paddingVertical: spacing.md },
+  dayHit: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    zIndex: 0,
+  },
+  dayAgenda: { paddingHorizontal: spacing.md, paddingBottom: spacing.md },
+  dayBack: { alignSelf: 'flex-start', paddingVertical: 8, marginBottom: 4 },
+  dayBackText: { color: colors.navy, fontWeight: '800', fontSize: 15 },
+  dayAgendaTitle: { color: colors.navy, fontWeight: '900', fontSize: 22 },
+  dayAgendaSub: { color: colors.muted, marginTop: 2, marginBottom: spacing.sm },
   jobCard: {
     backgroundColor: colors.white,
     borderRadius: 12,
@@ -893,6 +1011,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderLeftWidth: 4,
     marginBottom: 8,
+    zIndex: 1,
   },
   jobCardTop: {
     flexDirection: 'row',
@@ -931,11 +1050,12 @@ const styles = StyleSheet.create({
   monthGrid: { flexDirection: 'row', flexWrap: 'wrap' },
   monthCell: {
     minHeight: 92,
+    position: 'relative',
     backgroundColor: colors.white,
     borderWidth: 2,
     borderColor: colors.border,
     padding: 4,
-    overflow: 'hidden',
+    overflow: shellOverflow,
   },
   monthCellOut: { backgroundColor: '#EEF2F6' },
   monthCellToday: { borderColor: colors.gold },
@@ -954,6 +1074,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     paddingVertical: 2,
     marginBottom: 3,
+    zIndex: 1,
   },
   monthChipText: { color: colors.navy, fontSize: 10, fontWeight: '800' },
   archivedBlock: { marginTop: spacing.lg, paddingHorizontal: spacing.md },

@@ -22,6 +22,7 @@ export type MonthCell<T extends BoardJob> = DayColumn<T> & {
 };
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const WEEKDAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const MONTHS_LONG = [
   'January',
@@ -176,6 +177,11 @@ export function formatBoardRange(columns: { date: Date }[]): string {
 
 export function formatMonthTitle(anchor: Date): string {
   return `${MONTHS_LONG[anchor.getMonth()]} ${anchor.getFullYear()}`;
+}
+
+/** "Friday, Oct 2" for the day drill-in title and press label. */
+export function formatDayTitle(date: Date): string {
+  return `${WEEKDAYS_LONG[date.getDay()] ?? ''}, ${MONTHS[date.getMonth()] ?? ''} ${date.getDate()}`;
 }
 
 /**
