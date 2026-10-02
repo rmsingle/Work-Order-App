@@ -178,6 +178,72 @@ export function formatMonthTitle(anchor: Date): string {
   return `${MONTHS_LONG[anchor.getMonth()]} ${anchor.getFullYear()}`;
 }
 
+/**
+ * Widest the jobs board grows on a laptop. Wider windows keep empty side gutters
+ * instead of stretching the week wall to wall.
+ */
+export const BOARD_MAX_WIDTH = 1120;
+
+/** At this window width and above, Monday–Sunday share one row (no horizontal scroll). */
+export const WEEK_FIT_MIN_WIDTH = 960;
+
+export const WEEK_COLUMN_GAP = 10;
+
+/** Matches the horizontal inset on the toolbar, week row, and month grid. */
+export const BOARD_SECTION_INSET = 16;
+
+const WEEK_DAY_COUNT = 7;
+
+export type BoardChrome = {
+  /** All seven days are on screen together. */
+  fitWeek: boolean;
+  /** Centered shell width. Full viewport below {@link WEEK_FIT_MIN_WIDTH}. */
+  frameWidth: number;
+  /** Readable column width while the week is a horizontal scroller (phones). */
+  scrollColumnWidth: number;
+  /** Inner width of the week row and month grid after the section inset. */
+  innerWidth: number;
+};
+
+export function boardChrome(windowWidth: number): BoardChrome {
+  const width = Math.max(0, Math.floor(windowWidth));
+  const fitWeek = width >= WEEK_FIT_MIN_WIDTH;
+  const frameWidth = fitWeek ? Math.min(BOARD_MAX_WIDTH, width) : width;
+  const slots = width >= 700 ? 2.2 : 1.7;
+  const scrollColumnWidth = Math.max(
+    168,
+    Math.min(220, Math.floor((Math.max(width, 1) - 24) / slots))
+  );
+  return {
+    fitWeek,
+    frameWidth,
+    scrollColumnWidth,
+    innerWidth: Math.max(0, frameWidth - BOARD_SECTION_INSET * 2),
+  };
+}
+
+/** Equal day-column width inside a fitted week row, including the gaps between columns. */
+export function fittedWeekColumnWidth(innerWidth: number, gap = WEEK_COLUMN_GAP): number {
+  const budget = Math.max(0, Math.floor(innerWidth) - gap * (WEEK_DAY_COUNT - 1));
+  return Math.floor(budget / WEEK_DAY_COUNT);
+}
+
+/**
+ * Integer cell widths that sum to `total` after optional per-cell border outset
+ * (native borders sit outside the width; web is border-box so outset is 0).
+ */
+export function splitRowWidths(total: number, count: number, outsetPerCell = 0): number[] {
+  const safeCount = Math.max(1, Math.floor(count));
+  const budget = Math.max(0, Math.floor(total) - outsetPerCell * safeCount);
+  const base = Math.floor(budget / safeCount);
+  let extra = budget - base * safeCount;
+  return Array.from({ length: safeCount }, () => {
+    const width = base + (extra > 0 ? 1 : 0);
+    if (extra > 0) extra -= 1;
+    return width;
+  });
+}
+
 export type JobCardFace = {
   task: string;
   unit: string;

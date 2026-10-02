@@ -1,12 +1,18 @@
 import assert from 'node:assert/strict';
 import {
+  BOARD_MAX_WIDTH,
+  WEEK_COLUMN_GAP,
+  WEEK_FIT_MIN_WIDTH,
+  boardChrome,
   buildJobDayColumns,
   buildMonthCells,
   currentWeekDays,
+  fittedWeekColumnWidth,
   formatBoardRange,
   jobBoardDayKey,
   jobCardFace,
   localDayKey,
+  splitRowWidths,
 } from '../lib/job-board.ts';
 
 const now = new Date(2026, 8, 23, 15, 30, 0);
@@ -92,5 +98,56 @@ const face = jobCardFace({
 assert.equal(face.task, 'paint + vinyl');
 assert.equal(face.unit, 'Unit 1103');
 assert.equal(face.place, 'Northcliffe');
+
+function assertWeekFits(windowWidth) {
+  const chrome = boardChrome(windowWidth);
+  assert.equal(chrome.fitWeek, true);
+  assert.ok(chrome.frameWidth <= BOARD_MAX_WIDTH);
+  assert.ok(chrome.frameWidth <= windowWidth);
+  assert.ok(windowWidth - chrome.frameWidth >= 0);
+  const column = fittedWeekColumnWidth(chrome.innerWidth);
+  const row = column * 7 + WEEK_COLUMN_GAP * 6;
+  assert.ok(row <= chrome.innerWidth, `${windowWidth}px week row ${row} exceeds inner ${chrome.innerWidth}`);
+  assert.ok(chrome.innerWidth <= chrome.frameWidth);
+  assert.ok(chrome.frameWidth <= windowWidth);
+  const month = splitRowWidths(chrome.innerWidth, 7);
+  assert.equal(
+    month.reduce((sum, width) => sum + width, 0),
+    chrome.innerWidth
+  );
+  return { chrome, column };
+}
+
+const laptop = assertWeekFits(1280);
+assert.equal(laptop.chrome.frameWidth, BOARD_MAX_WIDTH);
+assert.ok(1280 - laptop.chrome.frameWidth >= 64, '1280px viewport keeps side gutters');
+assert.ok(laptop.column >= 140, 'day columns stay readable at 1280');
+
+const wide = assertWeekFits(1440);
+assert.equal(wide.chrome.frameWidth, BOARD_MAX_WIDTH);
+assert.equal(wide.column, laptop.column, 'wider than the max, the board stays the same width');
+assert.ok(1440 - wide.chrome.frameWidth >= 200);
+
+assertWeekFits(1366);
+const narrowLaptop = assertWeekFits(WEEK_FIT_MIN_WIDTH);
+assert.ok(narrowLaptop.column >= 110, 'columns compress instead of overflowing just below a laptop width');
+
+for (const width of [390, 768, WEEK_FIT_MIN_WIDTH - 1]) {
+  const chrome = boardChrome(width);
+  assert.equal(chrome.fitWeek, false, `${width}px stays a phone-style scroller`);
+  assert.equal(chrome.frameWidth, width);
+  const month = splitRowWidths(chrome.innerWidth, 7);
+  assert.equal(
+    month.reduce((sum, cell) => sum + cell, 0),
+    chrome.innerWidth
+  );
+  assert.ok(chrome.innerWidth <= width);
+}
+
+const phoneNative = splitRowWidths(boardChrome(390).innerWidth, 7, 4);
+assert.equal(
+  phoneNative.reduce((sum, cell) => sum + cell, 0) + 4 * 7,
+  boardChrome(390).innerWidth
+);
 
 console.log('week and month boards group by scheduled_on');
