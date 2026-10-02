@@ -24,7 +24,7 @@ import { colors, spacing } from '@/constants/theme';
 import { confirmArchiveJob } from '@/lib/archive-job';
 import { confirmDeleteJob, deleteJobPermanently } from '@/lib/delete-job';
 import { showMessage } from '@/lib/dialog';
-import { boardChrome } from '@/lib/job-board';
+import { boardChrome, HEADER_BUTTON_PAD, headerControlInset } from '@/lib/job-board';
 import { formatJobNumber, isMissingJobNumberColumn } from '@/lib/job-number';
 import { completionTarget, type FinishTarget } from '@/lib/finish-job';
 import { captureFromCamera, newPairId, pickFromLibrary } from '@/lib/photos';
@@ -71,6 +71,7 @@ type PendingUpload = {
 export default function JobDetailScreen() {
   const { height: windowHeight, width: windowWidth } = useWindowDimensions();
   const chrome = useMemo(() => boardChrome(windowWidth), [windowWidth]);
+  const headerInset = headerControlInset(windowWidth);
   const frameStyle = chrome.fitWeek
     ? { width: chrome.frameWidth, maxWidth: '100%' as const, alignSelf: 'center' as const }
     : { width: '100%' as const, alignSelf: 'stretch' as const };
@@ -223,7 +224,7 @@ export default function JobDetailScreen() {
       headerLeft: () => (
         <Pressable
           onPress={goToJobs}
-          style={styles.headerBtn}
+          style={[styles.headerBtn, { marginLeft: headerInset }]}
           accessibilityRole="button"
           accessibilityLabel="Back to jobs"
         >
@@ -232,7 +233,7 @@ export default function JobDetailScreen() {
       ),
       headerRight: () => <View style={{ width: 72 }} />,
     });
-  }, [navigation, job, goToJobs]);
+  }, [navigation, job, goToJobs, headerInset]);
 
   const pairs = useMemo(() => {
     const map = new Map<string, { pair_id: string; before: JobPhoto | null; after: JobPhoto | null }>();
@@ -808,7 +809,7 @@ const styles = StyleSheet.create({
   mapsBtnText: { color: colors.gold, fontWeight: '800' },
   mapsHint: { marginTop: spacing.sm, color: colors.muted, fontSize: 13 },
   meta: { marginTop: 4, fontSize: 12, color: colors.muted },
-  headerBtn: { paddingHorizontal: 12, paddingVertical: 6 },
+  headerBtn: { paddingHorizontal: HEADER_BUTTON_PAD, paddingVertical: 6 },
   headerBackText: { color: colors.white, fontWeight: '700', fontSize: 16 },
   addPhotoBtn: {
     marginTop: spacing.md,

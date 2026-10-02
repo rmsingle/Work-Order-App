@@ -185,10 +185,17 @@ export function formatDayTitle(date: Date): string {
 }
 
 /**
- * Widest the jobs board grows on a laptop. Wider windows keep empty side gutters
- * instead of stretching the week wall to wall.
+ * Widest the jobs board and job page grow on a laptop.
+ * A 1280px window then keeps about 40px of gutter on each side — half of the
+ * previous 80px gutters — instead of stretching the week wall to wall.
  */
-export const BOARD_MAX_WIDTH = 1120;
+export const BOARD_MAX_WIDTH = 1200;
+
+/**
+ * Horizontal padding inside the Sign out and Back pressables.
+ * {@link headerControlInset} subtracts this so the label, not the padding, meets the content edge.
+ */
+export const HEADER_BUTTON_PAD = 12;
 
 /** At this window width and above, the visible week days share one row (no horizontal scroll). */
 export const WEEK_FIT_MIN_WIDTH = 960;
@@ -210,6 +217,25 @@ export type BoardChrome = {
   /** Inner width of the week row and month grid after the section inset. */
   innerWidth: number;
 };
+
+/**
+ * Empty space on one side of the centered frame.
+ * Zero when the frame already fills the window (phones, and laptops at or under the max width).
+ */
+export function sideGutter(windowWidth: number): number {
+  const width = Math.max(0, Math.floor(windowWidth));
+  const chrome = boardChrome(width);
+  if (!chrome.fitWeek) return 0;
+  return Math.max(0, Math.floor((width - chrome.frameWidth) / 2));
+}
+
+/**
+ * How far Sign out and Back move in from the viewport edge.
+ * Their labels then line up with the board content, on the frame, not in the side gutters.
+ */
+export function headerControlInset(windowWidth: number): number {
+  return sideGutter(windowWidth) + Math.max(0, BOARD_SECTION_INSET - HEADER_BUTTON_PAD);
+}
 
 export function boardChrome(windowWidth: number): BoardChrome {
   const width = Math.max(0, Math.floor(windowWidth));
