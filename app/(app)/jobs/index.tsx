@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -20,10 +20,23 @@ import { captureFromCamera, pickManyFromLibrary } from '@/lib/photos';
 import { captionFromNote } from '@/lib/photo-storage';
 import { removeJobPhoto, uploadJobPhoto } from '@/lib/storage';
 import { showMessage } from '@/lib/dialog';
-import { buildJobDayColumns, formatBoardRange } from '@/lib/job-board';
+import {
+  addDays,
+  addMonths,
+  buildJobDayColumns,
+  buildMonthCells,
+  formatBoardRange,
+  formatMonthTitle,
+  jobCardFace,
+  localDayKey,
+  MONDAY_FIRST_LABELS,
+  startOfDay,
+  type DayColumn,
+  type MonthCell,
+} from '@/lib/job-board';
 import { formatJobNumber, isMissingJobNumberColumn } from '@/lib/job-number';
 import { getSupabase } from '@/lib/supabase';
-import type { Job } from '@/lib/types';
+import type { Job, JobStatus } from '@/lib/types';
 import { colors, spacing } from '@/constants/theme';
 
 function formatWhen(iso: string) {
@@ -35,6 +48,8 @@ function formatWhen(iso: string) {
 }
 
 const HEADER_SIDE = 104;
+
+type BoardMode = 'week' | 'month';
 
 type DraftJobPhoto = {
   id: string;
@@ -59,46 +74,53 @@ function draftFromCapture(photo: {
   };
 }
 
+function stripeColor(status: JobStatus) {
+  if (status === 'done') return colors.success;
+  if (status === 'in_progress') return colors.gold;
+  if (status === 'cancelled') return colors.danger;
+  return colors.navyMid;
+}
+
+function missingBoardColumn(message: string) {
+  return /scheduled_on|invoice_ref/i.test(message);
+}
+
 export function JobListCard({
-  jobNumber,
-  title,
-  address,
-  updatedLabel,
-  status,
+  job,
   onOpen,
-  compact,
 }: {
-  jobNumber: number | null | undefined;
-  title: string;
-  address: string | null;
-  updatedLabel?: string;
-  status: Job['status'];
+  job: Job;
   onOpen: () => void;
-  compact?: boolean;
 }) {
-  const numberLabel = formatJobNumber(jobNumber);
+  const face = jobCardFace(job);
+  const numberLabel = formatJobNumber(job.job_number);
   return (
     <Pressable
-      style={[styles.card, compact && styles.cardCompact]}
+      style={[styles.jobCard, { borderLeftColor: stripeColor(job.status) }]}
       onPress={onOpen}
       accessibilityRole="button"
-      accessibilityLabel={numberLabel ? `Open job ${numberLabel} ${title}` : `Open ${title}`}
+      accessibilityLabel={
+        numberLabel
+          ? `Open ${numberLabel} ${face.unit} ${face.task}`
+          : `Open ${face.unit} ${face.task}`
+      }
     >
-      <View style={styles.cardTop}>
-        {numberLabel ? (
-          <View style={styles.numberBadge}>
-            <Text style={styles.numberText}>{numberLabel}</Text>
-          </View>
-        ) : null}
-        <Text style={styles.cardTitle} numberOfLines={2}>
-          {title}
+      <View style={styles.jobCardTop}>
+        <Text style={styles.task} numberOfLines={2}>
+          {face.task}
         </Text>
-        <StatusBadge status={status} />
+        <StatusBadge status={job.status} compact />
       </View>
-      <Text style={styles.address} numberOfLines={2}>
-        {address || 'No address'}
+      <Text style={styles.unit} numberOfLines={1}>
+        {face.unit}
       </Text>
-      {updatedLabel ? <Text style={styles.meta}>Updated {updatedLabel}</Text> : null}
+      <View style={styles.jobMeta}>
+        <Text style={styles.place} numberOfLines={1}>
+          {face.place}
+        </Text>
+        {numberLabel ? <Text style={styles.jobNum}>{numberLabel}</Text> : null}
+      </View>
+      {job.invoice_ref ? <Text style={styles.invoiced}>Invoiced</Text> : null}
     </Pressable>
   );
 }
@@ -118,10 +140,19 @@ export default function JobsListScreen() {
   const [draftPhotos, setDraftPhotos] = useState<DraftJobPhoto[]>([]);
   const [createStatus, setCreateStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [mode, setMode] = useState<BoardMode>('week');
+  const [anchor, setAnchor] = useState(() => startOfDay(new Date()));
   const { height: windowHeight, width: windowWidth } = useWindowDimensions();
-  const columnWidth = Math.max(200, Math.min(260, Math.floor((windowWidth - 32) / 4)));
-  const dayColumns = buildJobDayColumns(jobs);
-  const boardRange = formatBoardRange(dayColumns);
+  const today = useMemo(() => startOfDay(new Date()), [jobs]);
+  const weekColumns = useMemo(
+    () => buildJobDayColumns(jobs, anchor, today),
+    [jobs, anchor, today]
+  );
+  const monthCells = useMemo(() => buildMonthCells(jobs, anchor, today), [jobs, anchor, today]);
+  const rangeLabel = mode === 'week' ? formatBoardRange(weekColumns) : formatMonthTitle(anchor);
+  const weekSlots = windowWidth >= 1280 ? 7 : windowWidth >= 900 ? 4 : 1.7;
+  const weekColumnWidth = Math.max(200, Math.min(248, Math.floor((windowWidth - 40) / weekSlots)));
+  const monthCellWidth = Math.floor((Math.min(windowWidth, 1200) - 24) / 7);
   const web = Platform.OS === 'web';
 
   const load = useCallback(async () => {
@@ -130,15 +161,22 @@ export default function JobsListScreen() {
       const supabase = getSupabase();
       const active = await supabase
         .from('jobs')
-        .select('id, job_number, title, property_address, status, created_by, created_at, updated_at, archived_at')
+        .select(
+          'id, job_number, title, property_address, status, created_by, created_at, updated_at, archived_at, scheduled_on, invoice_ref'
+        )
         .is('archived_at', null)
         .order('updated_at', { ascending: false });
       const archived = await supabase
         .from('jobs')
-        .select('id, job_number, title, property_address, status, created_by, created_at, updated_at, archived_at')
+        .select(
+          'id, job_number, title, property_address, status, created_by, created_at, updated_at, archived_at, scheduled_on, invoice_ref'
+        )
         .not('archived_at', 'is', null)
         .order('job_number', { ascending: false });
 
+      const boardMissing =
+        missingBoardColumn(active.error?.message ?? '') ||
+        missingBoardColumn(archived.error?.message ?? '');
       const missingNumber =
         isMissingJobNumberColumn(active.error?.message ?? '') ||
         isMissingJobNumberColumn(archived.error?.message ?? '');
@@ -152,6 +190,25 @@ export default function JobsListScreen() {
         const archivedLegacy = await supabase
           .from('jobs')
           .select('id, title, property_address, status, created_by, created_at, updated_at, archived_at')
+          .not('archived_at', 'is', null)
+          .order('updated_at', { ascending: false });
+        if (activeLegacy.error) throw activeLegacy.error;
+        if (archivedLegacy.error) throw archivedLegacy.error;
+        setJobs((activeLegacy.data as Job[]) ?? []);
+        setArchivedJobs((archivedLegacy.data as Job[]) ?? []);
+      } else if (boardMissing) {
+        const activeLegacy = await supabase
+          .from('jobs')
+          .select(
+            'id, job_number, title, property_address, status, created_by, created_at, updated_at, archived_at'
+          )
+          .is('archived_at', null)
+          .order('updated_at', { ascending: false });
+        const archivedLegacy = await supabase
+          .from('jobs')
+          .select(
+            'id, job_number, title, property_address, status, created_by, created_at, updated_at, archived_at'
+          )
           .not('archived_at', 'is', null)
           .order('updated_at', { ascending: false });
         if (activeLegacy.error) throw activeLegacy.error;
@@ -198,6 +255,12 @@ export default function JobsListScreen() {
     });
   }, [navigation, signOut]);
 
+  function shift(direction: -1 | 1) {
+    setAnchor((current) =>
+      mode === 'month' ? addMonths(current, direction) : addDays(current, direction * 7)
+    );
+  }
+
   async function addLibraryPhotos() {
     try {
       const picked = await pickManyFromLibrary({ kind: 'general' });
@@ -235,19 +298,34 @@ export default function JobsListScreen() {
     let createdJobId: string | null = null;
     const pending = draftPhotos;
     try {
-      const { data, error: insErr } = await getSupabase()
+      const scheduledOn = localDayKey(new Date());
+      const withSchedule = await getSupabase()
         .from('jobs')
         .insert({
           title,
           property_address: newAddress.trim() || null,
           status: 'open',
           created_by: user?.id ?? null,
+          scheduled_on: scheduledOn,
         })
         .select('id')
         .single();
-      if (insErr) throw insErr;
-      if (!data?.id) throw new Error('Job was not created.');
-      const jobId = data.id;
+      const inserted =
+        withSchedule.error && missingBoardColumn(withSchedule.error.message)
+          ? await getSupabase()
+              .from('jobs')
+              .insert({
+                title,
+                property_address: newAddress.trim() || null,
+                status: 'open',
+                created_by: user?.id ?? null,
+              })
+              .select('id')
+              .single()
+          : withSchedule;
+      if (inserted.error) throw inserted.error;
+      if (!inserted.data?.id) throw new Error('Job was not created.');
+      const jobId = inserted.data.id;
       createdJobId = jobId;
 
       const failures: string[] = [];
@@ -284,6 +362,8 @@ export default function JobsListScreen() {
       setNewTitle('');
       setNewAddress('');
       setDraftPhotos([]);
+      setAnchor(startOfDay(new Date()));
+      setMode('week');
       await load();
       if (failures.length > 0) {
         const saved = pending.length - failures.length;
@@ -314,6 +394,10 @@ export default function JobsListScreen() {
     }
   }
 
+  function openJob(id: string) {
+    router.push(`/(app)/jobs/${id}`);
+  }
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -337,8 +421,8 @@ export default function JobsListScreen() {
           {profile?.full_name ? `Hi, ${profile.full_name}` : 'PSG jobs'}
         </Text>
         <Text style={styles.helloSub}>
-          Open a job to add photos and notes. Active jobs are grouped by the day they were created.
-          Archived jobs are hidden from this list and shown below.
+          Week at a glance. Open a card to add photos. Archived jobs are hidden from this board and
+          listed below.
         </Text>
       </View>
 
@@ -363,48 +447,73 @@ export default function JobsListScreen() {
           />
         }
       >
-        <Text style={styles.boardRange}>{boardRange}</Text>
+        <View style={styles.toolbar}>
+          <View style={styles.rangeRow}>
+            <Pressable
+              style={styles.arrowBtn}
+              onPress={() => shift(-1)}
+              accessibilityRole="button"
+              accessibilityLabel={mode === 'week' ? 'Previous week' : 'Previous month'}
+            >
+              <Text style={styles.arrowText}>‹</Text>
+            </Pressable>
+            <Text style={styles.boardRange}>{rangeLabel}</Text>
+            <Pressable
+              style={styles.arrowBtn}
+              onPress={() => shift(1)}
+              accessibilityRole="button"
+              accessibilityLabel={mode === 'week' ? 'Next week' : 'Next month'}
+            >
+              <Text style={styles.arrowText}>›</Text>
+            </Pressable>
+            <Pressable
+              style={styles.todayBtn}
+              onPress={() => setAnchor(startOfDay(new Date()))}
+              accessibilityRole="button"
+              accessibilityLabel="Jump to today"
+            >
+              <Text style={styles.todayBtnText}>Today</Text>
+            </Pressable>
+          </View>
+          <View style={styles.modeToggle}>
+            <Pressable
+              style={[styles.modeBtn, mode === 'week' && styles.modeBtnOn]}
+              onPress={() => setMode('week')}
+              accessibilityRole="button"
+              accessibilityLabel="Week view"
+            >
+              <Text style={[styles.modeText, mode === 'week' && styles.modeTextOn]}>Week</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.modeBtn, mode === 'month' && styles.modeBtnOn]}
+              onPress={() => setMode('month')}
+              accessibilityRole="button"
+              accessibilityLabel="Month view"
+            >
+              <Text style={[styles.modeText, mode === 'month' && styles.modeTextOn]}>Month</Text>
+            </Pressable>
+          </View>
+        </View>
+
         {jobs.length === 0 ? (
           <Text style={styles.boardEmpty}>
             {archivedJobs.length > 0
               ? 'No active jobs. Archived jobs are hidden from this list and shown below.'
-              : 'No jobs yet. Tap New Job above to create one. Empty days this week stay on the board.'}
+              : 'No jobs yet. Tap New Job above. Empty days stay on the week board.'}
           </Text>
         ) : null}
-        <ScrollView
-          horizontal
-          nestedScrollEnabled
-          showsHorizontalScrollIndicator
-          style={[styles.dayScroller, { width: windowWidth }]}
-          contentContainerStyle={styles.boardContent}
-        >
-          {dayColumns.map((column) => (
-            <View key={column.key} style={[styles.column, { width: columnWidth }]}>
-              <View style={styles.columnHeader}>
-                <Text style={styles.colWeekday}>{column.weekday}</Text>
-                <Text style={styles.colDay}>{column.dayNum}</Text>
-                <Text style={[styles.colMonth, column.isToday && styles.todayPill]}>
-                  {column.isToday ? 'Today' : column.monthLabel}
-                </Text>
-              </View>
-              {column.jobs.length === 0 ? (
-                <Text style={styles.columnEmpty}>No jobs</Text>
-              ) : (
-                column.jobs.map((item) => (
-                  <JobListCard
-                    key={item.id}
-                    compact
-                    jobNumber={item.job_number}
-                    title={item.title}
-                    address={item.property_address}
-                    status={item.status}
-                    onOpen={() => router.push(`/(app)/jobs/${item.id}`)}
-                  />
-                ))
-              )}
-            </View>
-          ))}
-        </ScrollView>
+
+        {mode === 'week' ? (
+          <WeekBoard
+            columns={weekColumns}
+            columnWidth={weekColumnWidth}
+            windowWidth={windowWidth}
+            onOpen={openJob}
+          />
+        ) : (
+          <MonthBoard cells={monthCells} cellWidth={monthCellWidth} onOpen={openJob} />
+        )}
+
         {archivedJobs.length > 0 ? (
           <View style={styles.archivedBlock}>
             <Text style={styles.archivedTitle}>Archived</Text>
@@ -412,15 +521,10 @@ export default function JobsListScreen() {
               These jobs are off the active list. Open one to delete it.
             </Text>
             {archivedJobs.map((item) => (
-              <JobListCard
-                key={item.id}
-                jobNumber={item.job_number}
-                title={item.title}
-                address={item.property_address}
-                updatedLabel={formatWhen(item.updated_at)}
-                status={item.status}
-                onOpen={() => router.push(`/(app)/jobs/${item.id}`)}
-              />
+              <View key={item.id} style={styles.archivedCard}>
+                <JobListCard job={item} onOpen={() => openJob(item.id)} />
+                <Text style={styles.meta}>Updated {formatWhen(item.updated_at)}</Text>
+              </View>
             ))}
           </View>
         ) : null}
@@ -441,13 +545,13 @@ export default function JobsListScreen() {
             >
               <Text style={styles.sheetTitle}>New Job</Text>
               <Text style={styles.sheetSub}>
-                Title and property address for this site. You can dump several photos now. They
-                upload after the job is created. A note on each photo can wait until you are in the job.
+                Title and property address for this site. It lands on today. You can dump several
+                photos now. They upload after the job is created.
               </Text>
               <Text style={styles.fieldLabel}>Title</Text>
               <TextInput
                 style={styles.input}
-                placeholder="e.g. HVAC filter — Gilmer"
+                placeholder="e.g. NC Unit 1103 — paint + vinyl"
                 placeholderTextColor={colors.muted}
                 value={newTitle}
                 onChangeText={setNewTitle}
@@ -539,12 +643,111 @@ export default function JobsListScreen() {
   );
 }
 
+function WeekBoard({
+  columns,
+  columnWidth,
+  windowWidth,
+  onOpen,
+}: {
+  columns: DayColumn<Job>[];
+  columnWidth: number;
+  windowWidth: number;
+  onOpen: (id: string) => void;
+}) {
+  return (
+    <ScrollView
+      horizontal
+      nestedScrollEnabled
+      showsHorizontalScrollIndicator
+      style={[styles.dayScroller, { width: windowWidth }]}
+      contentContainerStyle={styles.boardContent}
+    >
+      {columns.map((column) => (
+        <View
+          key={column.key}
+          style={[styles.column, { width: columnWidth }, column.isToday && styles.columnToday]}
+        >
+          <View style={styles.columnHeader}>
+            <Text style={[styles.colWeekday, column.isToday && styles.colWeekdayToday]}>
+              {column.weekday}
+            </Text>
+            <Text style={styles.colDay}>{column.dayNum}</Text>
+            <Text style={[styles.colMonth, column.isToday && styles.todayPill]}>
+              {column.isToday ? 'Today' : column.monthLabel}
+            </Text>
+          </View>
+          {column.jobs.length === 0 ? (
+            <Text style={styles.columnEmpty}>No jobs</Text>
+          ) : (
+            column.jobs.map((item) => (
+              <JobListCard key={item.id} job={item} onOpen={() => onOpen(item.id)} />
+            ))
+          )}
+        </View>
+      ))}
+    </ScrollView>
+  );
+}
+
+function MonthBoard({
+  cells,
+  cellWidth,
+  onOpen,
+}: {
+  cells: MonthCell<Job>[];
+  cellWidth: number;
+  onOpen: (id: string) => void;
+}) {
+  return (
+    <View style={styles.monthWrap}>
+      <View style={styles.monthHead}>
+        {MONDAY_FIRST_LABELS.map((label) => (
+          <Text key={label} style={[styles.monthHeadText, { width: cellWidth }]}>
+            {label}
+          </Text>
+        ))}
+      </View>
+      <View style={styles.monthGrid}>
+        {cells.map((cell) => (
+          <View
+            key={cell.key}
+            style={[
+              styles.monthCell,
+              { width: cellWidth },
+              !cell.inMonth && styles.monthCellOut,
+              cell.isToday && styles.monthCellToday,
+            ]}
+          >
+            <Text style={[styles.monthDay, cell.isToday && styles.monthDayToday]}>{cell.dayNum}</Text>
+            {cell.jobs.map((job) => {
+              const face = jobCardFace(job);
+              return (
+                <Pressable
+                  key={job.id}
+                  style={[styles.monthChip, { borderLeftColor: stripeColor(job.status) }]}
+                  onPress={() => onOpen(job.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open ${face.unit} ${face.task}`}
+                >
+                  <Text style={styles.monthChipText} numberOfLines={2}>
+                    {face.unit}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.offWhite },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  hello: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.sm },
+  hello: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.xs },
   helloText: { fontSize: 18, fontWeight: '800', color: colors.navy },
-  helloSub: { color: colors.muted, marginTop: 2 },
+  helloSub: { color: colors.muted, marginTop: 2, lineHeight: 18 },
   newJobBtn: {
     marginHorizontal: spacing.md,
     marginTop: spacing.md,
@@ -556,28 +759,48 @@ const styles = StyleSheet.create({
   newJobBtnText: { color: colors.navy, fontWeight: '900', fontSize: 16 },
   signOutBtn: { paddingHorizontal: 12, paddingVertical: 6 },
   signOutText: { color: colors.gold, fontWeight: '700' },
-  list: { padding: spacing.md, paddingTop: 0, gap: spacing.sm },
-  emptyWrap: { flexGrow: 1, justifyContent: 'center', padding: spacing.lg },
-  empty: { alignItems: 'center' },
-  emptyTitle: { fontSize: 20, fontWeight: '800', color: colors.navy },
-  emptyBody: { marginTop: spacing.sm, textAlign: 'center', color: colors.muted, lineHeight: 20 },
-  newBtn: {
-    marginTop: spacing.md,
-    backgroundColor: colors.gold,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 12,
-  },
-  newBtnText: { color: colors.navy, fontWeight: '900' },
   boardScroll: { flex: 1 },
   boardScrollContent: { paddingBottom: spacing.xl },
-  boardRange: {
+  toolbar: {
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.sm,
-    color: colors.navy,
-    fontWeight: '800',
-    fontSize: 16,
+    gap: spacing.sm,
   },
+  rangeRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  arrowBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  arrowText: { color: colors.navy, fontSize: 22, fontWeight: '700', marginTop: -2 },
+  boardRange: { flex: 1, color: colors.navy, fontWeight: '800', fontSize: 16 },
+  todayBtn: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.gold,
+    backgroundColor: colors.white,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  todayBtnText: { color: colors.navy, fontWeight: '800', fontSize: 13 },
+  modeToggle: {
+    flexDirection: 'row',
+    alignSelf: 'flex-start',
+    backgroundColor: colors.white,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
+  modeBtn: { paddingHorizontal: 16, paddingVertical: 8 },
+  modeBtnOn: { backgroundColor: colors.navy },
+  modeText: { color: colors.navy, fontWeight: '800' },
+  modeTextOn: { color: colors.gold },
   boardEmpty: {
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.sm,
@@ -586,13 +809,25 @@ const styles = StyleSheet.create({
   },
   dayScroller: { flexGrow: 0 },
   boardContent: {
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.sm,
     paddingBottom: spacing.md,
     alignItems: 'flex-start',
   },
-  column: { marginRight: spacing.sm },
+  column: {
+    marginRight: 10,
+    backgroundColor: '#EEF2F6',
+    borderRadius: 14,
+    padding: 8,
+    minHeight: 280,
+  },
+  columnToday: {
+    backgroundColor: '#FFF8E6',
+    borderWidth: 1,
+    borderColor: colors.gold,
+  },
   columnHeader: { alignItems: 'center', marginBottom: spacing.sm, paddingBottom: spacing.xs },
-  colWeekday: { color: colors.muted, fontWeight: '700', fontSize: 13 },
+  colWeekday: { color: colors.muted, fontWeight: '800', fontSize: 13, letterSpacing: 0.4 },
+  colWeekdayToday: { color: colors.navy },
   colDay: { color: colors.navy, fontWeight: '900', fontSize: 28, lineHeight: 32 },
   colMonth: { color: colors.navyMid, fontWeight: '700', fontSize: 12 },
   todayPill: {
@@ -605,29 +840,74 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   columnEmpty: { color: colors.muted, textAlign: 'center', paddingVertical: spacing.md },
-  card: {
+  jobCard: {
     backgroundColor: colors.white,
-    borderRadius: 14,
-    padding: spacing.md,
+    borderRadius: 12,
+    padding: 10,
     borderWidth: 1,
     borderColor: colors.border,
-    marginBottom: spacing.sm,
+    borderLeftWidth: 4,
+    marginBottom: 8,
   },
-  cardCompact: { padding: spacing.sm },
-  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: spacing.sm },
-  numberBadge: {
-    backgroundColor: colors.navy,
-    borderRadius: 8,
+  jobCardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 6 },
+  task: { flex: 1, fontSize: 14, fontWeight: '800', color: colors.navy, lineHeight: 18 },
+  unit: { marginTop: 6, fontSize: 15, fontWeight: '800', color: colors.navy },
+  jobMeta: { marginTop: 2, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 6 },
+  place: { flex: 1, color: colors.muted, fontSize: 12, fontWeight: '700' },
+  jobNum: { color: colors.navy, fontWeight: '900', fontSize: 12 },
+  invoiced: {
+    marginTop: 6,
+    alignSelf: 'flex-start',
+    backgroundColor: '#E8EEF7',
+    color: colors.navy,
+    fontSize: 11,
+    fontWeight: '800',
+    overflow: 'hidden',
+    borderRadius: 999,
     paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingVertical: 2,
   },
-  numberText: { color: colors.gold, fontWeight: '900', fontSize: 16 },
-  cardTitle: { flex: 1, fontSize: 16, fontWeight: '800', color: colors.navy },
+  monthWrap: { paddingHorizontal: spacing.sm, paddingBottom: spacing.md },
+  monthHead: { flexDirection: 'row' },
+  monthHeadText: {
+    textAlign: 'center',
+    color: colors.muted,
+    fontWeight: '800',
+    fontSize: 12,
+    paddingBottom: 6,
+  },
+  monthGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+  monthCell: {
+    minHeight: 92,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 4,
+  },
+  monthCellOut: { backgroundColor: '#EEF2F6' },
+  monthCellToday: { borderColor: colors.gold, borderWidth: 2 },
+  monthDay: { color: colors.navy, fontWeight: '800', fontSize: 12, marginBottom: 2 },
+  monthDayToday: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.gold,
+    overflow: 'hidden',
+    borderRadius: 8,
+    paddingHorizontal: 6,
+  },
+  monthChip: {
+    backgroundColor: colors.offWhite,
+    borderLeftWidth: 3,
+    borderRadius: 4,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    marginBottom: 3,
+  },
+  monthChipText: { color: colors.navy, fontSize: 10, fontWeight: '800' },
   archivedBlock: { marginTop: spacing.lg, paddingHorizontal: spacing.md },
   archivedTitle: { fontSize: 16, fontWeight: '800', color: colors.navy, marginBottom: 4 },
   archivedHint: { color: colors.muted, marginBottom: spacing.sm, lineHeight: 18 },
-  address: { marginTop: spacing.sm, color: colors.navyMid },
-  meta: { marginTop: spacing.xs, fontSize: 12, color: colors.muted },
+  archivedCard: { marginBottom: spacing.sm },
+  meta: { marginTop: 2, fontSize: 12, color: colors.muted },
   errorBox: {
     margin: spacing.md,
     padding: spacing.md,

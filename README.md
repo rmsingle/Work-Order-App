@@ -8,6 +8,23 @@ Targets: iOS, Android, and a public web app (static export on Vercel, opened in 
 
 CompanyCam-style MVP: **photos are the primary artifact** on each job (GPS + timestamp + optional caption). Each work item is one spaced two-column row: the original photo and its note on the left, and either **Mark complete** or the completion photo on the right. Field notes that are not on a photo are listed as text.
 
+## Start using today
+
+Production site: [https://psg-job-tracker-psg9.vercel.app](https://psg-job-tracker-psg9.vercel.app)
+
+1. **Sign in** with the US phone number and password Rob created in Supabase. `336-546-2585` and `(336) 546-2585` both map to `3365462585@psg-jobs.app`. There is no public sign-up.
+2. **Deploy this branch** (merge the PR). Vercel already builds `npx expo export -p web` from `vercel.json`. No new environment variables. The two existing ones stay:
+   - `EXPO_PUBLIC_SUPABASE_URL`
+   - `EXPO_PUBLIC_SUPABASE_ANON_KEY` (publishable or anon key, never the secret / service role)
+3. **Load current jobs** in the Supabase SQL Editor, after `001`–`004` if those are not already applied:
+   - `supabase/migrations/005_jobs_scheduled_on.sql` (board date, invoice label, seed key)
+   - `supabase/migrations/006_seed_current_work.sql` (Northcliffe units + open follow-ups)
+4. Open **Jobs**. The home screen is a **week at a glance** (Monday–Sunday columns, prev/next, Today, Week | Month). The week of Sep 28–Oct 4, 2026 is filled with active Northcliffe work, including Friday Oct 2. Done paint on 708 and 912 stays on Sep 14–15; use the arrows to see that week.
+
+If you have a Postgres URL locally, `SUPABASE_DB_URL="postgresql://..." npm run seed` runs `005` then `006` with `psql`. Otherwise paste the two files. Re-running `006` updates those rows and replaces notes that start with `Seed:`. Notes added in the app stay.
+
+The seed does not add the giveaway that is not a work order, and it does not add the terminated capital-group properties. It archives the three `(SAMPLE)` rows from `001` so they leave the active board.
+
 ## What works
 
 | Feature | Status |
@@ -16,7 +33,7 @@ CompanyCam-style MVP: **photos are the primary artifact** on each job (GPS + tim
 | Email sign-in | Working as a secondary option. The login screen does not offer public sign-up |
 | Session persistence | Working (AsyncStorage / localStorage) |
 | Sign out | Working |
-| Jobs list (day columns, job number, address, status, pull-to-refresh) | Working — gold **New Job** at the top. Active jobs sit in columns by the local day of `created_at`. The current week stays visible, including empty days. Archived jobs stay below the board |
+| Jobs home (week at a glance, month grid, job number, status) | Working — gold **New Job** at the top. **Week** is the default: Monday–Sunday columns, prev/next, Today. **Month** is the same jobs on a calendar. A job uses `scheduled_on` when set, otherwise the local day of `created_at`. Cards have no Add photo. Archived jobs stay below the board |
 | New Job (title + property address + photos) | Working — gold button opens the sheet; photos upload to `job-photos` after the job row exists |
 | Job detail — centered header title, two-column rows, Open in Google Maps beside the address | Working |
 | Fast Capture (camera / library) | Working — uploads to Storage and sets `storage_path` |
@@ -43,7 +60,7 @@ app/
   index.tsx                 # session redirect or Configure Supabase
   (auth)/login.tsx          # phone + password (email as a fallback)
   (app)/_layout.tsx         # auth gate + stack
-  (app)/jobs/index.tsx      # day-column jobs dashboard + New Job
+  (app)/jobs/index.tsx      # week-at-a-glance + month dashboard + New Job
   (app)/jobs/[id].tsx       # photo-first detail + Add photo at the top
 components/                 # ConfigureSupabase, StatusBadge, BeforeAfterPair, ArchiveJobButton, DeleteJobButton
 contexts/AuthContext.tsx
@@ -65,6 +82,8 @@ supabase/migrations/
   002_storage_job_photos.sql
   003_jobs_archived_at.sql
   004_jobs_job_number_and_delete.sql
+  005_jobs_scheduled_on.sql
+  006_seed_current_work.sql
 supabase/002_storage_policies_for_dashboard.txt
 .env.example
 vercel.json               # Vercel install, web export, dist, SPA rewrite
@@ -109,11 +128,13 @@ Do these clicks once. The repo cannot create the project, turn on providers, or 
 4. **Enable Email.** **Authentication → Providers** (sometimes **Sign In / Providers**) → **Email** → turn it on → Save.
    - If **Confirm email** stays on, sign-up will not open the jobs list until the inbox link is clicked. Turn **Confirm email** off when you want a session immediately after sign-up.
 5. **Create employee logins in Supabase.** **Authentication → Users → Add user.** The email is the 10-digit US phone plus `@psg-jobs.app` (example: `3365462585@psg-jobs.app`). Set a password. Employees sign in on the app with that phone number and password. The app calls `signInWithPassword` on the synthetic email. They do not create their own accounts. SMS OTP is not used for this login.
-6. **Run the SQL, in order.** **SQL Editor** → New query → paste `supabase/migrations/001_init.sql` → **Run**. Then a new query → paste `supabase/migrations/002_storage_job_photos.sql` → **Run**. Then paste `supabase/migrations/003_jobs_archived_at.sql` → **Run**. Then paste `supabase/migrations/004_jobs_job_number_and_delete.sql` → **Run**.
+6. **Run the SQL, in order.** **SQL Editor** → New query → paste `supabase/migrations/001_init.sql` → **Run**. Then a new query → paste `supabase/migrations/002_storage_job_photos.sql` → **Run**. Then paste `supabase/migrations/003_jobs_archived_at.sql` → **Run**. Then paste `supabase/migrations/004_jobs_job_number_and_delete.sql` → **Run**. Then paste `supabase/migrations/005_jobs_scheduled_on.sql` → **Run**. Then paste `supabase/migrations/006_seed_current_work.sql` → **Run**. On a database that already has `001`–`004`, run only `005` and `006`.
    - `001` creates profiles, jobs, notes, photos, RLS, the signup trigger, and three sample Winston-Salem jobs.
    - `002` creates the **private** `job-photos` bucket only. It does not create storage policies. The SQL Editor cannot `ALTER` or `CREATE POLICY` on `storage.objects` (error 42501; that table is owned by `supabase_storage_admin`). Re-run `002` if you already applied an older `001` that left the bucket commented out.
    - `003` adds nullable `jobs.archived_at`. The active Jobs list only shows rows where that column is null. If you already ran `001`, run `003` once so **Archive job** can save.
    - `004` adds `jobs.job_number` (unique, assigned by a sequence, backfilled in `created_at` order) and DELETE policies so **Delete job** can remove a job, its notes, and its photos. Run `004` once on a database that already has `001`–`003`. Numbers stay put when other jobs are archived or deleted.
+   - `005` adds `scheduled_on` (the board day), `invoice_ref` (Bill.com numbers when a job was billed), and `seed_key` (so the current-work seed can be re-run).
+   - `006` upserts Northcliffe units and the open follow-ups, and archives `(SAMPLE)` rows. See [Start using today](#start-using-today).
 7. **Add the four storage policies.** After `002`, open **Dashboard → Storage → Policies** for the `job-photos` bucket and add these four policies. Role is **authenticated**. Each expression is `bucket_id = 'job-photos'`:
    - `job_photos_storage_select` — SELECT, USING
    - `job_photos_storage_insert` — INSERT, WITH CHECK
@@ -195,13 +216,13 @@ Email confirmation and auth redirects use that list. Without it, a link in an em
 ## Schema (summary)
 
 - **profiles** — `id` = `auth.users.id`, `full_name`, `phone`, `role` (`owner_admin` \| `employee` \| `customer`)
-- **jobs** — `job_number` (stable `#N`), title, property_address, status (`open` \| `in_progress` \| `done` \| `cancelled`), created_by, timestamps, `archived_at` (null = on the active dashboard). There is no scheduled or due date. The Jobs screen groups active jobs by the local calendar day of `created_at` and always shows the current Monday–Sunday week. Insert sends `title`, `property_address`, `status`, `created_by`; the database assigns the next `job_number`. Archive sets `archived_at`. Delete removes the row after confirm
+- **jobs** — `job_number` (stable `#N`), title, property_address, status (`open` shows as Pending \| `in_progress` \| `done` shows as Completed \| `cancelled`), created_by, timestamps, `archived_at` (null = on the active dashboard), `scheduled_on` (board day), `invoice_ref`, `seed_key`. The Jobs home is a Monday–Sunday week, with a Month grid on the same data. A set `scheduled_on` wins; otherwise the card uses the local day of `created_at`. New Job sets `scheduled_on` to today. Insert sends `title`, `property_address`, `status`, `created_by`, `scheduled_on`; the database assigns the next `job_number`. Archive sets `archived_at`. Delete removes the row after confirm
 - **job_notes** — job_id, author_id, body, created_at. The app selects and inserts notes. It does not edit or delete them
 - **job_photos** — job_id, storage_path (bucket object key), local_uri (legacy only), lat, lng, caption, kind (`before`|`after`|`general`), pair_id, created_by, created_at. Capture inserts `storage_path` and leaves `local_uri` null
 - **storage** — private bucket `job-photos` (`002_storage_job_photos.sql`). After `002`, add the four `job_photos_storage_*` policies in **Dashboard → Storage → Policies** (authenticated select/insert/update/delete on that bucket only). Display uses 1-hour signed URLs
 - Trigger: new `auth.users` → `profiles` row
 - RLS: authenticated select/insert/update on jobs, notes, photos, plus delete (`004`) so a job can be removed permanently (shared foundation; roles tighten later)
-- Seed: 3 SAMPLE Winston-Salem area jobs (Gilmer / Raintree / Queen)
+- Seed: `006_seed_current_work.sql` loads the current Northcliffe units and open follow-ups. `001` still inserts three `(SAMPLE)` rows only when the jobs table is empty; `006` archives those sample rows
 
 ## Brand
 

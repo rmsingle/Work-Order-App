@@ -4,9 +4,9 @@ import { colors } from '@/constants/theme';
 import type { JobStatus } from '@/lib/types';
 
 const labels: Record<JobStatus, string> = {
-  open: 'Open',
+  open: 'Pending',
   in_progress: 'In progress',
-  done: 'Done',
+  done: 'Completed',
   cancelled: 'Cancelled',
 };
 
@@ -17,11 +17,13 @@ const tones: Record<JobStatus, { bg: string; fg: string }> = {
   cancelled: { bg: '#FDECEC', fg: colors.danger },
 };
 
-export function StatusBadge({ status }: { status: JobStatus }) {
+export function StatusBadge({ status, compact }: { status: JobStatus; compact?: boolean }) {
   const tone = tones[status] ?? tones.open;
   return (
-    <View style={[styles.badge, { backgroundColor: tone.bg }]}>
-      <Text style={[styles.text, { color: tone.fg }]}>{labels[status] ?? status}</Text>
+    <View style={[styles.badge, compact && styles.badgeCompact, { backgroundColor: tone.bg }]}>
+      <Text style={[styles.text, compact && styles.textCompact, { color: tone.fg }]}>
+        {labels[status] ?? status}
+      </Text>
     </View>
   );
 }
@@ -33,5 +35,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     alignSelf: 'flex-start',
   },
+  badgeCompact: { paddingHorizontal: 8, paddingVertical: 2 },
   text: { fontSize: 12, fontWeight: '700' },
+  textCompact: { fontSize: 11 },
 });

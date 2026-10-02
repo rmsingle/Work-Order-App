@@ -48,6 +48,16 @@ function mapsSearchUrl(address: string) {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
 }
 
+function formatBoardDay(value: string) {
+  const [year, month, day] = value.slice(0, 10).split('-').map((part) => Number(part));
+  if (!year || !month || !day) return value;
+  return new Date(year, month - 1, day).toLocaleDateString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
 type PendingUpload = {
   localUri: string;
   mimeType: string | null;
@@ -89,11 +99,21 @@ export default function JobDetailScreen() {
     setError(null);
     try {
       const supabase = getSupabase();
-      const jobWithNumber = await supabase
+      const jobWithBoard = await supabase
         .from('jobs')
-        .select('id, job_number, title, property_address, status, created_by, created_at, updated_at, archived_at')
+        .select(
+          'id, job_number, title, property_address, status, created_by, created_at, updated_at, archived_at, scheduled_on, invoice_ref'
+        )
         .eq('id', id)
         .single();
+      const jobWithNumber =
+        jobWithBoard.error && /scheduled_on|invoice_ref/i.test(jobWithBoard.error.message)
+          ? await supabase
+              .from('jobs')
+              .select('id, job_number, title, property_address, status, created_by, created_at, updated_at, archived_at')
+              .eq('id', id)
+              .single()
+          : jobWithBoard;
       const jobRes =
         jobWithNumber.error && isMissingJobNumberColumn(jobWithNumber.error.message)
           ? await supabase
@@ -492,6 +512,12 @@ export default function JobDetailScreen() {
             <Text style={styles.mapsHint}>Add an address to open this job in Google Maps.</Text>
           )}
           <Text style={styles.meta}>Updated {formatWhen(job.updated_at)}</Text>
+          {job.scheduled_on ? (
+            <Text style={styles.meta}>On the board {formatBoardDay(job.scheduled_on)}</Text>
+          ) : null}
+          {job.invoice_ref ? (
+            <Text style={styles.invoiceLine}>Invoiced {job.invoice_ref} · Paid $0 on the PDF at send</Text>
+          ) : null}
           <Pressable
             style={[styles.addPhotoBtn, (capturing || sheetOpen) && styles.disabled]}
             onPress={openAddPhoto}
@@ -755,6 +781,7 @@ const styles = StyleSheet.create({
   },
   title: { flex: 1, fontSize: 20, fontWeight: '800', color: colors.navy },
   archivedNote: { marginTop: spacing.md, color: colors.muted, fontWeight: '700', textAlign: 'center' },
+  invoiceLine: { marginTop: spacing.sm, color: colors.navy, fontWeight: '800' },
   addressRow: {
     marginTop: spacing.sm,
     flexDirection: 'row',

@@ -6,6 +6,7 @@ const sql = fs.readFileSync(path.join(root, 'supabase/migrations/001_init.sql'),
 const storageSql = fs.readFileSync(path.join(root, 'supabase/migrations/002_storage_job_photos.sql'), 'utf8');
 const archiveSql = fs.readFileSync(path.join(root, 'supabase/migrations/003_jobs_archived_at.sql'), 'utf8');
 const numberSql = fs.readFileSync(path.join(root, 'supabase/migrations/004_jobs_job_number_and_delete.sql'), 'utf8');
+const scheduleSql = fs.readFileSync(path.join(root, 'supabase/migrations/005_jobs_scheduled_on.sql'), 'utf8');
 const detail = fs.readFileSync(path.join(root, 'app/(app)/jobs/[id].tsx'), 'utf8');
 const login = fs.readFileSync(path.join(root, 'app/(auth)/login.tsx'), 'utf8');
 const phoneAuth = fs.readFileSync(path.join(root, 'lib/phoneAuth.ts'), 'utf8');
@@ -76,6 +77,7 @@ const jobs = [
   ...tableColumns(sql, 'jobs'),
   ...addedColumns(archiveSql, 'jobs'),
   ...addedColumns(numberSql, 'jobs'),
+  ...addedColumns(scheduleSql, 'jobs'),
 ];
 const notes = tableColumns(sql, 'job_notes');
 const photos = tableColumns(sql, 'job_photos');
@@ -181,8 +183,12 @@ if (!list.includes('>Archived<')) fail('archived jobs must stay reachable so the
 if (!list.includes('buildJobDayColumns')) fail('jobs dashboard must group active jobs into day columns');
 if (!list.includes('horizontal')) fail('day columns must scroll horizontally');
 const jobBoard = fs.readFileSync(path.join(root, 'lib/job-board.ts'), 'utf8');
-if (!jobBoard.includes('created_at')) fail('day columns must group by created_at');
+if (!jobBoard.includes('scheduled_on')) fail('day columns must prefer scheduled_on');
+if (!jobBoard.includes('created_at')) fail('day columns must fall back to created_at');
 if (!jobBoard.includes('currentWeekDays')) fail('the board must keep the current week on screen');
+if (!scheduleSql.includes('scheduled_on date')) fail('005 must add scheduled_on');
+if (!list.includes('scheduled_on')) fail('jobs list must read and write scheduled_on');
+if (!list.includes('>Week<') || !list.includes('>Month<')) fail('jobs home must switch Week and Month');
 if (!list.includes("headerTitleAlign: 'center'")) fail('Jobs title must be centered in the header');
 const newJobBtn = list.match(/newJobBtn:\s*\{([^}]+)\}/);
 if (!newJobBtn || !newJobBtn[1].includes('backgroundColor: colors.gold') || !newJobBtn[1].includes('paddingVertical: 14')) {

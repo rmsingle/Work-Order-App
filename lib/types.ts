@@ -21,6 +21,10 @@ export type Job = {
   created_at: string;
   updated_at: string;
   archived_at?: string | null;
+  /** YYYY-MM-DD board day. Null means the list falls back to created_at. */
+  scheduled_on?: string | null;
+  /** Bill.com invoice number(s), when this job was billed. */
+  invoice_ref?: string | null;
 };
 
 export type JobNote = {

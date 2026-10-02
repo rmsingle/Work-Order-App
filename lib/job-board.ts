@@ -1,10 +1,13 @@
-export type DayJob = {
+export type BoardJob = {
   id: string;
   created_at: string;
+  scheduled_on?: string | null;
   job_number?: number | null;
+  title?: string;
+  property_address?: string | null;
 };
 
-export type DayColumn<T extends DayJob> = {
+export type DayColumn<T extends BoardJob> = {
   key: string;
   date: Date;
   weekday: string;
@@ -14,10 +17,35 @@ export type DayColumn<T extends DayJob> = {
   jobs: T[];
 };
 
+export type MonthCell<T extends BoardJob> = DayColumn<T> & {
+  inMonth: boolean;
+};
+
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MONTHS_LONG = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
 
-/** Local calendar day as YYYY-MM-DD. There is no scheduled date on a job, so this is the work-day key. */
+/** Monday-first labels for the month grid header. */
+export const MONDAY_FIRST_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+export function startOfDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+/** Local calendar day as YYYY-MM-DD. */
 export function localDayKey(date: Date): string {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -33,7 +61,7 @@ export function parseLocalDay(iso: string): Date | null {
 
 /** Monday through Sunday that contains `now`, in local time. */
 export function currentWeekDays(now = new Date()): Date[] {
-  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const start = startOfDay(now);
   const weekday = start.getDay();
   const delta = weekday === 0 ? -6 : 1 - weekday;
   start.setDate(start.getDate() + delta);
@@ -44,14 +72,35 @@ export function currentWeekDays(now = new Date()): Date[] {
   });
 }
 
-function compareJobs(a: DayJob, b: DayJob) {
+export function addDays(date: Date, days: number): Date {
+  const next = startOfDay(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+export function addMonths(date: Date, months: number): Date {
+  return new Date(date.getFullYear(), date.getMonth() + months, 1);
+}
+
+/**
+ * Board day for a job. `scheduled_on` (YYYY-MM-DD) wins.
+ * Jobs created in the app with no schedule fall back to the local day of `created_at`.
+ */
+export function jobBoardDayKey(job: BoardJob): string | null {
+  const scheduled = job.scheduled_on?.trim().slice(0, 10);
+  if (scheduled && /^\d{4}-\d{2}-\d{2}$/.test(scheduled)) return scheduled;
+  const created = parseLocalDay(job.created_at);
+  return created ? localDayKey(created) : null;
+}
+
+function compareJobs(a: BoardJob, b: BoardJob) {
   const aNumber = a.job_number ?? Number.MAX_SAFE_INTEGER;
   const bNumber = b.job_number ?? Number.MAX_SAFE_INTEGER;
   if (aNumber !== bNumber) return aNumber - bNumber;
   return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
 }
 
-function columnFor(date: Date, todayKey: string, jobs: DayJob[]): DayColumn<DayJob> {
+function columnFor<T extends BoardJob>(date: Date, todayKey: string, jobs: T[]): DayColumn<T> {
   return {
     key: localDayKey(date),
     date,
@@ -63,36 +112,51 @@ function columnFor(date: Date, todayKey: string, jobs: DayJob[]): DayColumn<DayJ
   };
 }
 
-/**
- * Active jobs grouped by the local calendar day of `created_at`.
- * The current Monday–Sunday week is always present, including empty days.
- * Days outside that week appear only when they have a job, so a long gap does not fill the board.
- */
-export function buildJobDayColumns<T extends DayJob>(jobs: T[], now = new Date()): DayColumn<T>[] {
+function groupByBoardDay<T extends BoardJob>(jobs: T[]): Map<string, T[]> {
   const byDay = new Map<string, T[]>();
   for (const job of jobs) {
-    const day = parseLocalDay(job.created_at);
-    if (!day) continue;
-    const key = localDayKey(day);
+    const key = jobBoardDayKey(job);
+    if (!key) continue;
     const bucket = byDay.get(key);
     if (bucket) bucket.push(job);
     else byDay.set(key, [job]);
   }
+  return byDay;
+}
 
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const todayKey = localDayKey(today);
-  const week = currentWeekDays(today);
-  const keys = new Set(week.map((day) => localDayKey(day)));
-  for (const key of byDay.keys()) keys.add(key);
+/**
+ * One Monday–Sunday week of day columns. Empty days stay on the board.
+ * `anchor` picks the week. `today` marks the Today column (defaults to `anchor`
+ * so a single date argument still means "this week, and that day is today").
+ */
+export function buildJobDayColumns<T extends BoardJob>(
+  jobs: T[],
+  anchor = new Date(),
+  today = anchor
+): DayColumn<T>[] {
+  const byDay = groupByBoardDay(jobs);
+  const todayKey = localDayKey(startOfDay(today));
+  return currentWeekDays(anchor).map((date) => columnFor(date, todayKey, byDay.get(localDayKey(date)) ?? []));
+}
 
-  const dates = [...keys]
-    .map((key) => {
-      const [y, m, d] = key.split('-').map((part) => Number(part));
-      return new Date(y, (m || 1) - 1, d || 1);
-    })
-    .sort((a, b) => a.getTime() - b.getTime());
-
-  return dates.map((date) => columnFor(date, todayKey, byDay.get(localDayKey(date)) ?? []) as DayColumn<T>);
+/** Month grid, weeks starting Monday, including the leading and trailing days. */
+export function buildMonthCells<T extends BoardJob>(
+  jobs: T[],
+  anchor: Date,
+  today = new Date()
+): MonthCell<T>[] {
+  const firstOfMonth = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+  const lastOfMonth = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0);
+  const start = currentWeekDays(firstOfMonth)[0];
+  const end = currentWeekDays(lastOfMonth)[6];
+  const byDay = groupByBoardDay(jobs);
+  const todayKey = localDayKey(startOfDay(today));
+  const cells: MonthCell<T>[] = [];
+  for (let cursor = new Date(start); cursor.getTime() <= end.getTime(); cursor = addDays(cursor, 1)) {
+    const column = columnFor(cursor, todayKey, byDay.get(localDayKey(cursor)) ?? []);
+    cells.push({ ...column, inMonth: cursor.getMonth() === firstOfMonth.getMonth() });
+  }
+  return cells;
 }
 
 export function formatBoardRange(columns: { date: Date }[]): string {
@@ -105,7 +169,41 @@ export function formatBoardRange(columns: { date: Date }[]): string {
     return `${MONTHS[first.getMonth()]} ${first.getDate()}–${last.getDate()}, ${first.getFullYear()}`;
   }
   if (sameYear) {
-    return `${MONTHS[first.getMonth()]} ${first.getDate()} – ${MONTHS[last.getMonth()]} ${last.getDate()}, ${first.getFullYear()}`;
+    return `${MONTHS[first.getMonth()]} ${first.getDate()}–${MONTHS[last.getMonth()]} ${last.getDate()}, ${first.getFullYear()}`;
   }
-  return `${MONTHS[first.getMonth()]} ${first.getDate()}, ${first.getFullYear()} – ${MONTHS[last.getMonth()]} ${last.getDate()}, ${last.getFullYear()}`;
+  return `${MONTHS[first.getMonth()]} ${first.getDate()}, ${first.getFullYear()}–${MONTHS[last.getMonth()]} ${last.getDate()}, ${last.getFullYear()}`;
+}
+
+export function formatMonthTitle(anchor: Date): string {
+  return `${MONTHS_LONG[anchor.getMonth()]} ${anchor.getFullYear()}`;
+}
+
+export type JobCardFace = {
+  task: string;
+  unit: string;
+  place: string;
+};
+
+function propertyPlace(address: string | null | undefined, title: string): string {
+  if ((address && /northcliffe/i.test(address)) || /^NC\b/.test(title)) return 'Northcliffe';
+  if (!address?.trim()) return 'PSG';
+  const first = address.split(',')[0]?.trim();
+  return first || 'PSG';
+}
+
+/** RentReady-style card lines: task, unit, property. Parsed from the job title. */
+export function jobCardFace(job: { title: string; property_address?: string | null }): JobCardFace {
+  const place = propertyPlace(job.property_address, job.title);
+  const titled = job.title.match(/^(.*?)\s+[—–-]\s+(.+)$/);
+  if (!titled) {
+    return { task: job.title, unit: place, place };
+  }
+  const head = titled[1].trim();
+  const task = titled[2].trim();
+  const unitMatch = head.match(/unit\s+(.+)$/i);
+  return {
+    task,
+    unit: unitMatch ? `Unit ${unitMatch[1].trim()}` : head,
+    place,
+  };
 }
